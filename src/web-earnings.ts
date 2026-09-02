@@ -1,10 +1,14 @@
 /**
  * KAP.L (Kazatomprom, LSE-listed) has no earnings coverage on any free data provider we could
- * find (Finnhub, FMP, API Ninjas, Twelve Data, Alpha Vantage all checked — see conversation
- * history). As a fallback for this one ticker, ask Claude (with the web_search tool) to look up
- * its next earnings date and recent history directly, since a live web search finds what
- * structured financial-data APIs don't index for free.
+ * find (Finnhub, FMP, API Ninjas, Twelve Data, Alpha Vantage all checked). As a fallback for this
+ * one ticker, ask Claude (with the web_search tool) to look up its next earnings date and recent
+ * history directly.
+ *
+ * Also holds `lookupEarningsResult` — the structured post-report results lookup used by the
+ * earnings poll for ALL tickers (Finnhub's calendar entry carries only the pre-report estimate).
  */
+
+const HAIKU = "claude-haiku-4-5-20251001";
 
 export interface WebEarningsEntry {
   date: string; // YYYY-MM-DD, next known/estimated reporting date
@@ -50,7 +54,7 @@ export async function lookupEarningsViaWebSearch(
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "claude-haiku-4-5-20251001",
+      model: HAIKU,
       max_tokens: 2048,
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: `Company: ${companyName} (${ticker})` }],
@@ -84,8 +88,7 @@ export async function lookupEarningsViaWebSearch(
 }
 
 /**
- * Weekly by default; daily during the week the estimated/known next date falls in, so a fuzzy
- * estimate tightens up right before it matters instead of going stale for up to 7 days.
+ * Weekly by default; daily during the week the estimated/known next date falls in.
  */
 export function shouldRefreshWebEarnings(prior: WebEarningsDoc | null): boolean {
   if (!prior) return true;
@@ -94,7 +97,8 @@ export function shouldRefreshWebEarnings(prior: WebEarningsDoc | null): boolean 
   const daysSinceCheck = (Date.now() - checkedAt) / (1000 * 60 * 60 * 24);
 
   if (prior.next) {
-    const daysUntilNext = (new Date(prior.next.date + "T00:00:00Z").getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+    const daysUntilNext =
+      (new Date(prior.next.date + "T00:00:00Z").getTime() - Date.now()) / (1000 * 60 * 60 * 24);
     if (daysUntilNext <= 7 && daysUntilNext >= -1) {
       return daysSinceCheck >= 1; // earnings week — check daily
     }
@@ -103,32 +107,39 @@ export function shouldRefreshWebEarnings(prior: WebEarningsDoc | null): boolean 
   return daysSinceCheck >= 7; // otherwise — check weekly
 }
 
-/**
- * Recap for a holding that reported earnings on a given recent date (today or the last couple of
- * days) — pulled via web search since Finnhub's estimate-only calendar entry has no actual/
- * surprise data until it later backfills `stock/earnings`, and even then some tickers (e.g. LSE
- * listings) never get covered at all.
- */
-export interface TodayEarningsRecap {
-  ticker: string;
-  date: string; // YYYY-MM-DD, the reporting date this recap is for
-  epsActual: number | null;
+/** Structured post-report results for the earnings poll — revenue, EPS, guidance, highlights, YoY. */
+export interface EarningsResultLookup {
+  revenue: number | null;
+  revenueEstimate: number | null;
+  revenueYoyPct: number | null;
+  eps: number | null;
   epsEstimate: number | null;
-  takeaway: string; // 1-3 sentence plain-English summary of how it went
-  checkedAt: string;
+  epsYoyPct: number | null;
+  guidanceText: string;
+  highlightsText: string;
+  beat: number | null;
 }
 
-const RECAP_SYSTEM_PROMPT = `You research a stock's earnings results using web search. Given a company name, ticker, and the date it reported earnings, find the results announced on that date.
-Respond with ONLY JSON, no prose: {"epsActual": number|null, "epsEstimate": number|null, "takeaway": "..."}
-epsActual/epsEstimate: EPS in USD, converted if reported in another currency; null if not found or not applicable.
-takeaway: 1-3 plain-English sentences on how the results went (beat/missed estimates, notable guidance or news) — written for someone glancing at their portfolio app, not a research note. If nothing has been reported on or after that date yet, say so plainly in the takeaway and use null for the EPS fields.`;
+const RESULT_SYSTEM_PROMPT = `You research a company's just-released quarterly earnings using web search.
+Given a company name, ticker, and the date it reported, find the results announced on or immediately after that date.
+Respond with ONLY JSON, no prose:
+{"revenue": number|null, "revenueEstimate": number|null, "revenueYoyPct": number|null,
+ "eps": number|null, "epsEstimate": number|null, "epsYoyPct": number|null,
+ "guidanceText": string, "highlightsText": string, "beat": 1|0|null}
+- revenue / revenueEstimate: in USD, absolute dollars (e.g. 96200000000), converted if reported in another currency. null if not found.
+- revenueYoyPct / epsYoyPct: percent change vs the same quarter one year earlier (e.g. 106 for +106%). null if not found.
+- eps / epsEstimate: diluted EPS in USD. null if not found.
+- guidanceText: one sentence on next-period or full-year guidance vs consensus; "" if none given.
+- highlightsText: one sentence on margins or segment detail worth noting; "" if nothing notable.
+- beat: 1 if the company beat consensus on its headline metric, 0 if it missed, null if unclear or nothing reported yet.
+If no results have been published on or after that date yet, return all numeric fields null, beat null, and say so in guidanceText.`;
 
-export async function lookupTodayEarningsRecap(
+export async function lookupEarningsResult(
   apiKey: string,
   ticker: string,
   companyName: string,
   date: string,
-): Promise<TodayEarningsRecap | null> {
+): Promise<EarningsResultLookup | null> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -137,37 +148,35 @@ export async function lookupTodayEarningsRecap(
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 1024,
-      system: RECAP_SYSTEM_PROMPT,
-      messages: [{ role: "user", content: `Company: ${companyName} (${ticker}). Reported earnings on: ${date}.` }],
+      model: HAIKU,
+      max_tokens: 1500,
+      system: RESULT_SYSTEM_PROMPT,
+      messages: [
+        { role: "user", content: `Company: ${companyName} (${ticker}). Reported earnings on: ${date}.` },
+      ],
       tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }],
     }),
   });
-
   if (!res.ok) return null;
-
   try {
     const data = (await res.json()) as { content: ContentBlock[] };
     const text = data.content
       .filter((c) => c.type === "text")
       .map((c) => c.text ?? "")
       .join("\n");
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return null;
-    const parsed = JSON.parse(jsonMatch[0]) as {
-      epsActual: number | null;
-      epsEstimate: number | null;
-      takeaway: string;
-    };
-    if (typeof parsed.takeaway !== "string") return null;
+    const m = text.match(/\{[\s\S]*\}/);
+    if (!m) return null;
+    const p = JSON.parse(m[0]) as Partial<EarningsResultLookup>;
     return {
-      ticker,
-      date,
-      epsActual: parsed.epsActual ?? null,
-      epsEstimate: parsed.epsEstimate ?? null,
-      takeaway: parsed.takeaway,
-      checkedAt: new Date().toISOString(),
+      revenue: p.revenue ?? null,
+      revenueEstimate: p.revenueEstimate ?? null,
+      revenueYoyPct: p.revenueYoyPct ?? null,
+      eps: p.eps ?? null,
+      epsEstimate: p.epsEstimate ?? null,
+      epsYoyPct: p.epsYoyPct ?? null,
+      guidanceText: typeof p.guidanceText === "string" ? p.guidanceText : "",
+      highlightsText: typeof p.highlightsText === "string" ? p.highlightsText : "",
+      beat: p.beat === 1 || p.beat === 0 ? p.beat : null,
     };
   } catch {
     return null;
