@@ -1,113 +1,221 @@
-import { fetchDividends } from "./fmp";
+import { db } from "./db";
+import { fetchDividends, type FmpDividend } from "./fmp";
 import { usdToEurRate } from "./fx";
 import { marketauxLookupTicker, type Holding } from "./holdings";
 
-export interface UpcomingDividend {
+export interface DividendRow {
   ticker: string;
-  name: string;
-  logo?: string;
   exDate: string;
   paymentDate: string;
-  perShare: number;
+  perShareUsd: number;
+  perShareEur: number;
   qualifyingShares: number;
-  estimatedPayment: number;
+  amountEur: number;
+  yieldPct: number | null;
   locked: boolean;
 }
 
-const KV_KEY = "dividends:upcoming";
-const FUTURE_WINDOW_DAYS = 90;
-const PAST_WINDOW_DAYS = 14; // keep recently-passed ex-dates visible for a bit, not just future ones
-
-function todayUTC(): string {
-  return new Date().toISOString().slice(0, 10);
+/** Serving shape — name/logo joined from KV holdings by the route. */
+export interface Dividend extends DividendRow {
+  name: string;
+  logo?: string;
 }
 
-export async function getUpcomingDividends(kv: KVNamespace): Promise<UpcomingDividend[]> {
-  return (await kv.get<UpcomingDividend[]>(KV_KEY, "json")) ?? [];
+const EARLIEST_EX_DATE = "2026-08-01";
+const RETENTION_DAYS = 60;
+
+function daysAgo(n: number): string {
+  return new Date(Date.now() - n * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
-/**
- * Qualification tracking: while a dividend's ex-date is still in the future (locked: false),
- * qualifyingShares is overwritten with the holding's current quantity every refresh — it
- * tracks your live position. The moment the ex-date has passed (locked: true), the PRIOR
- * stored record's qualifyingShares is carried forward unchanged, because that's the real
- * number that mattered at the deadline and today's quantity may have already moved on.
- * No transaction history needed — this piggybacks on the existing holdings-sync cron.
- */
+/** Number of dividend payments in the trailing 365 days from the most recent ex-date; default 4, clamp 1..12. */
+export function paymentsPerYear(history: { date: string }[]): number {
+  if (history.length < 2) return 4;
+  const sorted = [...history].map((h) => h.date).sort().reverse();
+  const newest = new Date(sorted[0] + "T00:00:00Z").getTime();
+  const cutoff = newest - 365 * 24 * 60 * 60 * 1000;
+  // Strictly within the trailing year: a payment exactly 365 days before the newest is the
+  // *prior* year's same-quarter dividend, not a 5th payment this year.
+  const count = sorted.filter((d) => new Date(d + "T00:00:00Z").getTime() > cutoff).length;
+  return Math.min(12, Math.max(1, count));
+}
+
+interface PriorRow {
+  per_share_eur: number;
+  qualifying_shares: number;
+  yield_pct: number | null;
+  locked: number;
+}
+
+interface ResolveInput {
+  ticker: string;
+  exDate: string;
+  paymentDate: string;
+  perShareUsd: number;
+  usdToEur: number;
+  quantity: number;
+  currentPrice: number;
+  paymentsPerYear: number;
+  today: string;
+}
+
+/** Pure: computes the row to upsert given the FMP dividend + this ticker's prior stored row (or null). */
+export function resolveDividendRow(
+  input: ResolveInput,
+  prior: PriorRow | null,
+): {
+  ticker: string;
+  ex_date: string;
+  payment_date: string;
+  per_share_usd: number;
+  per_share_eur: number;
+  qualifying_shares: number;
+  amount_eur: number;
+  yield_pct: number | null;
+  locked: 0 | 1;
+} {
+  const wasLocked = prior?.locked === 1;
+  const locked = wasLocked || input.exDate < input.today;
+
+  // `locked && prior`: freeze the stored snapshot. `locked && !prior`: the ex-date passed before
+  // this dividend was ever stored (D1 empty at first deploy, or holding added late) — no snapshot
+  // to freeze, so fall back to today's FX + today's share count. Best effort; the backfill covers
+  // every realistic pre-deploy case since FMP still returns August dividends on first run.
+  const perShareEur = locked && prior ? prior.per_share_eur : input.perShareUsd * input.usdToEur;
+  const qualifyingShares = locked && prior ? prior.qualifying_shares : input.quantity;
+  const yieldPct =
+    locked && prior
+      ? prior.yield_pct
+      : input.currentPrice > 0
+        ? ((input.perShareUsd * input.paymentsPerYear) / input.currentPrice) * 100
+        : null;
+
+  return {
+    ticker: input.ticker,
+    ex_date: input.exDate,
+    payment_date: input.paymentDate,
+    per_share_usd: input.perShareUsd,
+    per_share_eur: perShareEur,
+    qualifying_shares: qualifyingShares,
+    amount_eur: perShareEur * qualifyingShares,
+    yield_pct: yieldPct,
+    locked: locked ? 1 : 0,
+  };
+}
+
+export async function getDividends(d1: D1Database): Promise<DividendRow[]> {
+  const rows = await db.all<{
+    ticker: string;
+    ex_date: string;
+    payment_date: string;
+    per_share_usd: number;
+    per_share_eur: number;
+    qualifying_shares: number;
+    amount_eur: number;
+    yield_pct: number | null;
+    locked: number;
+  }>(d1, `SELECT * FROM dividends ORDER BY ex_date ASC`);
+  return rows.map((r) => ({
+    ticker: r.ticker,
+    exDate: r.ex_date,
+    paymentDate: r.payment_date,
+    perShareUsd: r.per_share_usd,
+    perShareEur: r.per_share_eur,
+    qualifyingShares: r.qualifying_shares,
+    amountEur: r.amount_eur,
+    yieldPct: r.yield_pct,
+    locked: r.locked === 1,
+  }));
+}
+
 export async function refreshDividends(
-  kv: KVNamespace,
+  d1: D1Database,
   fmpKey: string,
   holdings: Holding[],
-): Promise<UpcomingDividend[]> {
-  const today = todayUTC();
-  const windowStart = new Date(Date.now() - PAST_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const windowEnd = new Date(Date.now() + FUTURE_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+): Promise<DividendRow[]> {
+  const today = new Date().toISOString().slice(0, 10);
 
-  // FMP's dividend field has no currency marker; every holding here is US-listed except KAP.L
-  // (which has no dividend coverage on any provider we use), so USD->EUR covers the real
-  // portfolio. If a EUR- or GBP-listed dividend payer is ever added, this assumption breaks
-  // and needs per-ticker currency detection — not built, since no such holding exists today.
-  //
-  // On an FX fetch failure, abort rather than silently showing unconverted USD as if it were
-  // EUR — that's a worse failure mode than serving the prior, still-correct stored snapshot.
   let usdToEur: number;
   try {
     usdToEur = await usdToEurRate();
   } catch {
-    return getUpcomingDividends(kv);
+    return getDividends(d1); // don't write unconverted USD as EUR
   }
 
-  const priorByKey = new Map(
-    (await getUpcomingDividends(kv)).map((d) => [`${d.ticker}:${d.exDate}`, d]),
-  );
-
-  const results: UpcomingDividend[] = [];
+  const paymentRetentionFloor = daysAgo(RETENTION_DAYS);
 
   for (const h of holdings) {
-    if (h.isManual) continue; // no public ticker — nothing to fetch, nothing to estimate
+    if (h.isManual) continue;
 
-    let dividends;
+    let fmpDividends: FmpDividend[];
     try {
-      dividends = await fetchDividends(fmpKey, marketauxLookupTicker(h));
+      fmpDividends = await fetchDividends(fmpKey, marketauxLookupTicker(h));
     } catch {
-      // Provider hiccup on this ticker — keep whatever was already stored for it rather than dropping it.
-      for (const [key, prior] of priorByKey) {
-        if (prior.ticker === h.ticker) results.push(prior);
-        priorByKey.delete(key);
-      }
-      continue;
+      continue; // keep this ticker's existing rows untouched
     }
 
-    for (const div of dividends) {
-      if (div.date < windowStart || div.date > windowEnd) continue;
+    const ppy = paymentsPerYear(fmpDividends.map((d) => ({ date: d.date })));
 
-      const key = `${h.ticker}:${div.date}`;
-      const prior = priorByKey.get(key);
-      const wasLocked = prior?.locked ?? false;
-      const locked = wasLocked || div.date < today;
+    for (const div of fmpDividends) {
+      if (div.date < EARLIEST_EX_DATE) continue;
+      if (div.paymentDate < paymentRetentionFloor) continue;
 
-      // Once locked, freeze both the share count AND the already-converted EUR amount at
-      // whatever was already stored — a "locked in" number that still drifts with today's
-      // exchange rate isn't actually locked. Never locked yet — keep tracking current
-      // quantity and re-converting at today's rate.
-      const qualifyingShares = locked ? (prior?.qualifyingShares ?? h.quantity) : h.quantity;
-      const perShareEur = locked && prior ? prior.perShare : div.dividend * usdToEur;
+      const prior = await db.first<PriorRow>(
+        d1,
+        `SELECT per_share_eur, qualifying_shares, yield_pct, locked FROM dividends WHERE ticker = ? AND ex_date = ?`,
+        h.ticker,
+        div.date,
+      );
 
-      results.push({
-        ticker: h.ticker,
-        name: h.name,
-        logo: h.logo,
-        exDate: div.date,
-        paymentDate: div.paymentDate,
-        perShare: perShareEur,
-        qualifyingShares,
-        estimatedPayment: perShareEur * qualifyingShares,
-        locked,
-      });
+      const row = resolveDividendRow(
+        {
+          ticker: h.ticker,
+          exDate: div.date,
+          paymentDate: div.paymentDate,
+          perShareUsd: div.dividend,
+          usdToEur,
+          quantity: h.quantity,
+          currentPrice: h.currentPrice,
+          paymentsPerYear: ppy,
+          today,
+        },
+        prior,
+      );
+
+      await db.run(
+        d1,
+        `INSERT INTO dividends
+           (ticker, ex_date, payment_date, per_share_usd, per_share_eur, qualifying_shares, amount_eur, yield_pct, locked, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (ticker, ex_date) DO UPDATE SET
+           payment_date = excluded.payment_date,
+           per_share_usd = excluded.per_share_usd,
+           per_share_eur = excluded.per_share_eur,
+           qualifying_shares = excluded.qualifying_shares,
+           amount_eur = excluded.amount_eur,
+           yield_pct = excluded.yield_pct,
+           locked = excluded.locked,
+           updated_at = excluded.updated_at`,
+        row.ticker,
+        row.ex_date,
+        row.payment_date,
+        row.per_share_usd,
+        row.per_share_eur,
+        row.qualifying_shares,
+        row.amount_eur,
+        row.yield_pct,
+        row.locked,
+        new Date().toISOString(),
+      );
     }
   }
 
-  results.sort((a, b) => a.exDate.localeCompare(b.exDate));
-  await kv.put(KV_KEY, JSON.stringify(results));
-  return results;
+  await db.run(
+    d1,
+    `DELETE FROM dividends WHERE ex_date < ? OR payment_date < ?`,
+    EARLIEST_EX_DATE,
+    daysAgo(RETENTION_DAYS),
+  );
+
+  return getDividends(d1);
 }
