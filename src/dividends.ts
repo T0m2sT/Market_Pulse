@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { fetchDividends, type FmpDividend } from "./fmp";
-import { fetchYahooDividends } from "./yahoo-dividends";
+import { fetchEodhdDividends } from "./eodhd-dividends";
 import { usdToEurRate } from "./fx";
 import { marketauxLookupTicker, type Holding } from "./holdings";
 
@@ -133,6 +133,7 @@ export async function refreshDividends(
   d1: D1Database,
   fmpKey: string,
   holdings: Holding[],
+  eodhdKey?: string,
 ): Promise<DividendRow[]> {
   const today = new Date().toISOString().slice(0, 10);
 
@@ -153,10 +154,12 @@ export async function refreshDividends(
     try {
       fmpDividends = await fetchDividends(fmpKey, lookupSym);
     } catch {
-      // FMP free tier gates ~half the holdings (HTTP 402). Fall back to Yahoo (ex-date + amount,
-      // payment date estimated). If that also fails, keep this ticker's existing rows untouched.
+      // FMP free tier gates ~half the holdings (HTTP 402). Fall back to EODHD (real ex/pay/
+      // declaration dates, split-adjusted per-share). If that also fails, keep this ticker's
+      // existing rows untouched.
+      if (!eodhdKey) continue;
       try {
-        fmpDividends = await fetchYahooDividends(lookupSym);
+        fmpDividends = await fetchEodhdDividends(eodhdKey, lookupSym);
       } catch {
         continue;
       }
