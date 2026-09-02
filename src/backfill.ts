@@ -84,7 +84,7 @@ export async function runBackfill(
       r.guidanceText,
       r.highlightsText,
       r.beat,
-      periodLabel(date),
+      r.period || periodLabel(date),
       new Date().toISOString(),
       ticker,
       date,

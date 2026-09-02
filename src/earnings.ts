@@ -374,7 +374,7 @@ export async function pollEarningsResults(
          beat = excluded.beat, checked_at = excluded.checked_at`,
       entry.ticker,
       entry.date,
-      periodLabel(entry.date),
+      result.period || periodLabel(entry.date),
       result.revenue,
       result.revenueEstimate,
       result.revenueYoyPct,

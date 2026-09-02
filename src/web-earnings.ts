@@ -118,14 +118,17 @@ export interface EarningsResultLookup {
   guidanceText: string;
   highlightsText: string;
   beat: number | null;
+  /** Fiscal period label as the company reports it, e.g. "Q2 FY2027" or "H1 2026". "" if unknown. */
+  period: string;
 }
 
 const RESULT_SYSTEM_PROMPT = `You research a company's just-released quarterly earnings using web search.
 Given a company name, ticker, and the date it reported, find the results announced on or immediately after that date.
 Respond with ONLY JSON, no prose:
-{"revenue": number|null, "revenueEstimate": number|null, "revenueYoyPct": number|null,
+{"period": string, "revenue": number|null, "revenueEstimate": number|null, "revenueYoyPct": number|null,
  "eps": number|null, "epsEstimate": number|null, "epsYoyPct": number|null,
  "guidanceText": string, "highlightsText": string, "beat": 1|0|null}
+- period: the fiscal period the company reported, using its own labels (e.g. "Q2 FY2027" for NVIDIA, "H1 2026" for a half-year filer). "" if unclear.
 - revenue / revenueEstimate: in USD, absolute dollars (e.g. 96200000000), converted if reported in another currency. null if not found.
 - revenueYoyPct / epsYoyPct: percent change vs the same quarter one year earlier (e.g. 106 for +106%). null if not found.
 - eps / epsEstimate: diluted EPS in USD. null if not found.
@@ -177,6 +180,7 @@ export async function lookupEarningsResult(
       guidanceText: typeof p.guidanceText === "string" ? p.guidanceText : "",
       highlightsText: typeof p.highlightsText === "string" ? p.highlightsText : "",
       beat: p.beat === 1 || p.beat === 0 ? p.beat : null,
+      period: typeof p.period === "string" ? p.period : "",
     };
   } catch {
     return null;
