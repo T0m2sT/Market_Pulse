@@ -64,7 +64,22 @@ export interface ReturnsDoc {
   sectors: SectorReturn[];
 }
 
-export interface UpcomingEarning {
+export interface Briefing {
+  ticker: string;
+  weekStart: string;
+  summary: string;
+  body: string;
+  sentiment: number;
+  articleCount: number;
+  seen: boolean;
+}
+
+export interface NewsDoc {
+  updatedAt: string;
+  briefings: Briefing[];
+}
+
+export interface CalendarRowEntry {
   ticker: string;
   name: string;
   logo?: string;
@@ -74,65 +89,46 @@ export interface UpcomingEarning {
   year: number;
   epsEstimate: number | null;
   revenueEstimate: number | null;
-  isEstimate?: boolean;
+  isEstimate: boolean;
+  isPast: boolean;
 }
 
 export interface EarningsResult {
-  symbol: string;
+  ticker: string;
+  date: string;
   period: string;
-  year: number;
-  quarter: number;
-  estimate: number | null;
-  actual: number | null;
-  surprisePercent: number | null;
+  revenue: number | null;
+  revenueEstimate: number | null;
+  revenueYoyPct: number | null;
+  eps: number | null;
+  epsEstimate: number | null;
+  epsYoyPct: number | null;
+  guidanceText: string;
+  highlightsText: string;
+  beat: number | null;
 }
 
 export interface EarningsDoc {
   updatedAt: string;
-  upcoming: UpcomingEarning[];
+  calendar: CalendarRowEntry[];
   results: Record<string, EarningsResult[]>;
 }
 
-export interface TodayEarningsRecap {
-  ticker: string;
-  date: string;
-  epsActual: number | null;
-  epsEstimate: number | null;
-  takeaway: string;
-  checkedAt: string;
-}
-
-export interface RankedArticle {
-  id: string;
-  ticker: string;
-  title: string;
-  description: string;
-  url: string;
-  source: string;
-  publishedAt: string;
-  sentiment: number;
-  impact: number;
-  reason: string;
-}
-
-export interface NewsDoc {
-  updatedAt: string;
-  articles: RankedArticle[];
-}
-
-export interface UpcomingDividend {
+export interface Dividend {
   ticker: string;
   name: string;
   logo?: string;
   exDate: string;
   paymentDate: string;
-  perShare: number;
+  perShareUsd: number;
+  perShareEur: number;
   qualifyingShares: number;
-  estimatedPayment: number;
+  amountEur: number;
+  yieldPct: number | null;
   locked: boolean;
 }
 
 export interface DividendsDoc {
   updatedAt: string;
-  upcoming: UpcomingDividend[];
+  dividends: Dividend[];
 }
