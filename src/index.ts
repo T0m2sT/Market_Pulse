@@ -8,16 +8,11 @@ import {
   isValidHoldingsInput,
   normaliseInputWeights,
 } from "./holdings";
-import {
-  getUpcomingEarnings,
-  getEarningsResults,
-  refreshEarnings,
-  getTodayEarningsRecaps,
-  refreshTodayEarningsRecaps,
-} from "./earnings";
+import { getEarnings, refreshEarningsCalendar, pollEarningsResults } from "./earnings";
 import { getReturns, refreshReturns } from "./returns";
-import { getRankedNews, refreshNews } from "./news";
-import { getUpcomingDividends, refreshDividends } from "./dividends";
+import { getBriefings, refreshNews, refreshArticles, refreshBriefings, markBriefingSeen } from "./news";
+import { getDividends, refreshDividends } from "./dividends";
+import { runBackfill } from "./backfill";
 
 async function handle(request: Request, env: Env): Promise<Response> {
     if (request.method === "OPTIONS") {
@@ -57,32 +52,35 @@ async function handle(request: Request, env: Env): Promise<Response> {
     }
 
     if (url.pathname === "/api/dividends" && request.method === "GET") {
-      const upcoming = await getUpcomingDividends(env.PORTFOLIO_KV);
-      return Response.json({ updatedAt: new Date().toISOString(), upcoming });
+      const [rows, holdings] = await Promise.all([
+        getDividends(env.DB),
+        getHoldings(env.PORTFOLIO_KV),
+      ]);
+      const byTicker = new Map(holdings.positions.map((p) => [p.ticker, p]));
+      const dividends = rows.map((r) => ({
+        ...r,
+        name: byTicker.get(r.ticker)?.name ?? r.ticker,
+        logo: byTicker.get(r.ticker)?.logo,
+      }));
+      return Response.json({ updatedAt: new Date().toISOString(), dividends });
     }
 
     if (url.pathname === "/api/dividends/refresh" && request.method === "POST") {
       const holdings = await getHoldings(env.PORTFOLIO_KV);
-      const upcoming = await refreshDividends(env.PORTFOLIO_KV, env.FMP_API_KEY, holdings.positions);
-      return Response.json({ updatedAt: new Date().toISOString(), upcoming });
+      await refreshDividends(env.DB, env.FMP_API_KEY, holdings.positions);
+      return Response.json({ status: "ok" });
     }
 
     if (url.pathname === "/api/earnings" && request.method === "GET") {
-      const [upcoming, results] = await Promise.all([
-        getUpcomingEarnings(env.PORTFOLIO_KV),
-        getEarningsResults(env.PORTFOLIO_KV),
-      ]);
-      return Response.json({ updatedAt: new Date().toISOString(), upcoming, results });
+      const holdings = await getHoldings(env.PORTFOLIO_KV);
+      return Response.json(await getEarnings(env.DB, holdings.positions));
     }
 
     if (url.pathname === "/api/earnings/refresh" && request.method === "POST") {
       const holdings = await getHoldings(env.PORTFOLIO_KV);
-      await refreshEarnings(env.PORTFOLIO_KV, env.FINNHUB_API_KEY, holdings.positions, env.ANTHROPIC_API_KEY);
+      await refreshEarningsCalendar(env.DB, env.FINNHUB_API_KEY, holdings.positions, env.ANTHROPIC_API_KEY);
+      await pollEarningsResults(env.DB, env.ANTHROPIC_API_KEY, holdings.positions);
       return Response.json({ status: "ok" });
-    }
-
-    if (url.pathname === "/api/earnings/today-recaps" && request.method === "GET") {
-      return Response.json(await getTodayEarningsRecaps(env.PORTFOLIO_KV));
     }
 
     if (url.pathname === "/api/returns" && request.method === "GET") {
@@ -107,24 +105,44 @@ async function handle(request: Request, env: Env): Promise<Response> {
     }
 
     if (url.pathname === "/api/news" && request.method === "GET") {
-      const doc = await getRankedNews(env.PORTFOLIO_KV);
-      return Response.json(doc);
+      return Response.json(await getBriefings(env.DB));
     }
 
     if (url.pathname === "/api/news/top" && request.method === "GET") {
-      const doc = await getRankedNews(env.PORTFOLIO_KV);
-      return Response.json({ updatedAt: doc.updatedAt, articles: doc.articles.slice(0, 3) });
+      const [doc, holdings] = await Promise.all([
+        getBriefings(env.DB),
+        getHoldings(env.PORTFOLIO_KV),
+      ]);
+      const weight = new Map(holdings.positions.map((p) => [p.ticker, p.weight]));
+      const latestWeek = doc.briefings[0]?.weekStart;
+      const top = doc.briefings
+        .filter((b) => b.weekStart === latestWeek)
+        .map((b) => ({ b, score: Math.abs(b.sentiment) * Math.sqrt(weight.get(b.ticker) ?? 0) }))
+        .sort((a, z) => z.score - a.score)
+        .slice(0, 3)
+        .map(({ b }) => b);
+      return Response.json({ updatedAt: doc.updatedAt, briefings: top });
     }
 
     if (url.pathname === "/api/news/refresh" && request.method === "POST") {
       const holdings = await getHoldings(env.PORTFOLIO_KV);
-      const doc = await refreshNews(
-        env.PORTFOLIO_KV,
-        env.MARKETAUX_API_KEY,
-        env.ANTHROPIC_API_KEY,
-        holdings.positions,
-      );
+      const doc = await refreshNews(env.DB, env.MARKETAUX_API_KEY, env.ANTHROPIC_API_KEY, holdings.positions);
       return Response.json(doc);
+    }
+
+    if (url.pathname === "/api/news/seen" && request.method === "PATCH") {
+      const body = (await request.json().catch(() => null)) as { ticker?: string; weekStart?: string } | null;
+      if (!body?.ticker || !body?.weekStart) {
+        return Response.json({ error: "ticker and weekStart required" }, { status: 400 });
+      }
+      await markBriefingSeen(env.DB, body.ticker, body.weekStart);
+      return Response.json({ status: "ok" });
+    }
+
+    if (url.pathname === "/api/admin/backfill" && request.method === "POST") {
+      const holdings = await getHoldings(env.PORTFOLIO_KV);
+      const result = await runBackfill(env.DB, env, holdings.positions);
+      return Response.json({ status: "ok", ...result });
     }
 
     return Response.json({ error: "not found" }, { status: 404 });
@@ -136,38 +154,44 @@ export default {
   },
 
   async scheduled(event: ScheduledController, env: Env): Promise<void> {
-    // Four independent cron schedules, distinguished by cron expression:
-    //  - "5 6 * * *"              daily earnings calendar (Finnhub)
-    //  - "* 13-19 * * 2-6"        returns snapshot, every minute during regular market hours (9:30am-4pm ET)
-    //  - "*/5 8-12,20-23 * * 2-6" returns snapshot, every 5min during pre/post-market (4am-9:30am, 4pm-8pm ET)
-    //                             (both fetch live T212 prices for computing returns but do NOT write
-    //                             the holdings doc — holdings only change on a manual sync, see
-    //                             fetchMergedTrading212Positions vs syncFromTrading212 in holdings.ts —
-    //                             so each tick costs exactly 1 KV write, not 2)
-    //  - "0 6,13,20 * * *"        news, 3x/day (25 Marketaux calls/cycle — see marketaux.ts for why so infrequent);
-    //                             also refreshes today's earnings recaps (cache-hit no-op once a ticker's recap exists)
-    //
-    // Weekday field is shifted vs standard cron — confirmed empirically in the dashboard's cron
-    // preview: Cloudflare's day-of-week 0=Saturday (not Sunday), so real Mon-Fri is "2-6", NOT the
-    // standard "1-5" (which silently skipped Fri and fired Sun-Thu instead — this is why the
-    // every-minute/every-5min crons above went dark for hours despite looking correct and matching
-    // the docs' Mon-Fri convention).
+    // Cron schedules. Cloudflare's day-of-week is SHIFTED: 0=Saturday, 1=Sunday, 2=Monday ... 6=Friday
+    // (confirmed empirically in this repo's history — the returns crons use "2-6" for real Mon-Fri;
+    // the standard "1-5" silently skipped Friday and fired Sun-Thu instead).
+    //  "5 6 * * *"                daily: earnings calendar sync + dividends refresh
+    //  "5 7 * * 2"                Monday only (2 == Monday here): weekly news briefing generation
+    //  "* 13-19 * * 2-6"          returns snapshot, every minute, regular market hours (9:30am-4pm ET)
+    //  "*/5 8-12,20-23 * * 2-6"   returns snapshot, every 5 min, pre/post market
+    //                             (both fetch live T212 prices but do NOT write the holdings doc —
+    //                             holdings only change on a manual sync — so each tick is 1 KV write)
+    //  "0 6,13,20 * * *"          news article ingest to D1, 3x/day (~25 Marketaux calls/cycle)
+    //  "*/10 11-23 * * 2-6"       earnings results poll — one indexed SELECT that returns early on
+    //                             any day none of the holdings reports; only calls Claude on report days
     if (event.cron === "5 6 * * *") {
       const holdings = await getHoldings(env.PORTFOLIO_KV);
-      await refreshEarnings(env.PORTFOLIO_KV, env.FINNHUB_API_KEY, holdings.positions, env.ANTHROPIC_API_KEY);
-      await refreshDividends(env.PORTFOLIO_KV, env.FMP_API_KEY, holdings.positions);
+      await refreshEarningsCalendar(env.DB, env.FINNHUB_API_KEY, holdings.positions, env.ANTHROPIC_API_KEY);
+      await refreshDividends(env.DB, env.FMP_API_KEY, holdings.positions);
+      return;
+    }
+
+    if (event.cron === "5 7 * * 2") {
+      const holdings = await getHoldings(env.PORTFOLIO_KV);
+      await refreshBriefings(env.DB, env.ANTHROPIC_API_KEY, holdings.positions);
       return;
     }
 
     if (event.cron === "0 6,13,20 * * *") {
       const holdings = await getHoldings(env.PORTFOLIO_KV);
-      await refreshNews(env.PORTFOLIO_KV, env.MARKETAUX_API_KEY, env.ANTHROPIC_API_KEY, holdings.positions);
-      await refreshTodayEarningsRecaps(env.PORTFOLIO_KV, env.ANTHROPIC_API_KEY, holdings.positions);
+      await refreshArticles(env.DB, env.MARKETAUX_API_KEY, holdings.positions);
       return;
     }
 
-    // Live prices only, no KV write for holdings — holdings only change on a manual sync
-    // (POST /api/returns/refresh or PUT /api/holdings), never automatically.
+    if (event.cron === "*/10 11-23 * * 2-6") {
+      const holdings = await getHoldings(env.PORTFOLIO_KV);
+      await pollEarningsResults(env.DB, env.ANTHROPIC_API_KEY, holdings.positions);
+      return;
+    }
+
+    // Returns crons: live prices only, no KV write for holdings.
     const positions = await fetchMergedTrading212Positions(env.PORTFOLIO_KV, env.T212_API_KEY_ID, env.T212_API_SECRET, env.FINNHUB_API_KEY);
     await refreshReturns(env.PORTFOLIO_KV, positions);
   },
