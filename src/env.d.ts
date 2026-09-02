@@ -6,4 +6,5 @@ interface Env {
   MARKETAUX_API_KEY: string;
   ANTHROPIC_API_KEY: string;
   FMP_API_KEY: string;
+  DB: D1Database;
 }

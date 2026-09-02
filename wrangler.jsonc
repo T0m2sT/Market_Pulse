@@ -9,6 +9,13 @@
   "kv_namespaces": [
     { "binding": "PORTFOLIO_KV", "id": "4af455192ea6431fb8073f7169160856" }
   ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "market-pulse",
+      "database_id": "00000000-0000-0000-0000-000000000000"
+    }
+  ],
   "triggers": {
     "crons": ["5 6 * * *", "* 13-19 * * 2-6", "*/5 8-12,20-23 * * 2-6", "0 6,13,20 * * *"]
   }
