@@ -21,9 +21,19 @@ export async function runBackfill(
     ANTHROPIC_API_KEY: string;
   },
   holdings: Holding[],
-): Promise<{ dividends: number; earningsResultsEnriched: number }> {
-  await refreshDividends(d1, env.FMP_API_KEY, holdings);
-  await refreshEarningsCalendar(d1, env.FINNHUB_API_KEY, holdings, env.ANTHROPIC_API_KEY);
+): Promise<{ dividends: number; earningsResultsEnriched: number; seeded: boolean }> {
+  // First call seeds dividends + earnings calendar/history; subsequent calls skip straight to
+  // enrichment. Keeps any single invocation under the Workers Free 50-subrequest cap
+  // (seed ≈ 25 FMP/Finnhub calls; enrichment ≈ 15 Claude calls — doing both in one call would
+  // blow the limit).
+  const seededRow = await db.first<{ n: number }>(d1, `SELECT COUNT(*) AS n FROM earnings_calendar`);
+  const seeded = (seededRow?.n ?? 0) > 0;
+  if (!seeded) {
+    await refreshDividends(d1, env.FMP_API_KEY, holdings);
+    await refreshEarningsCalendar(d1, env.FINNHUB_API_KEY, holdings, env.ANTHROPIC_API_KEY);
+    const divCount0 = await db.first<{ n: number }>(d1, `SELECT COUNT(*) AS n FROM dividends`);
+    return { dividends: divCount0?.n ?? 0, earningsResultsEnriched: 0, seeded: true };
+  }
 
   const nameByTicker = new Map(holdings.map((h) => [h.ticker, h.name]));
 
@@ -83,5 +93,5 @@ export async function runBackfill(
   }
 
   const divCount = await db.first<{ n: number }>(d1, `SELECT COUNT(*) AS n FROM dividends`);
-  return { dividends: divCount?.n ?? 0, earningsResultsEnriched: enriched };
+  return { dividends: divCount?.n ?? 0, earningsResultsEnriched: enriched, seeded: true };
 }

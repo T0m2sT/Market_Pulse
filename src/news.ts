@@ -40,6 +40,11 @@ export function shouldGenerateBriefings(
   return latestBriefingWeekStart !== justCompletedWeekStart;
 }
 
+/** Max Claude briefing calls per cron invocation — bounds the daily 5:6 cron's subrequest count
+ *  on the Workers Free tier (50/invocation). Any not covered today are picked up on the next
+ *  daily run, so a full week of ~20 companies is briefed within ~2 days. */
+const MAX_BRIEFINGS_PER_RUN = 8;
+
 // ---- Reads ----
 
 export interface NewsDoc {
@@ -194,26 +199,30 @@ export async function refreshBriefings(
   anthropicKey: string,
   holdings: Holding[],
 ): Promise<void> {
-  // Runs from a Monday-only cron. "3 days ago" lands in the just-completed Mon-Sun week
-  // regardless of the exact run hour.
+  // Runs from the daily 5:6 cron. "3 days ago" keeps us in the just-completed Mon-Sun week
+  // through the first few days of the new week; after that we're briefing the current week as
+  // it fills, which is fine (the row upserts). Generates at most MAX_BRIEFINGS_PER_RUN per run —
+  // any company with news that week but no briefing yet is picked up on a subsequent daily run.
   const { weekStart, weekEnd } = isoWeekBounds(daysAgo(3));
-
-  const latest = await db.first<{ week_start: string }>(
-    d1,
-    `SELECT week_start FROM news_briefings ORDER BY week_start DESC LIMIT 1`,
-  );
-  if (!shouldGenerateBriefings(weekStart, latest?.week_start ?? null)) return;
 
   const nameByTicker = new Map(holdings.map((h) => [h.ticker, h.name]));
 
+  // Companies with news this week that don't yet have a briefing row for it.
   const grouped = await db.all<{ ticker: string }>(
     d1,
-    `SELECT DISTINCT ticker FROM news_articles WHERE published_at >= ? AND published_at <= ?`,
+    `SELECT DISTINCT a.ticker FROM news_articles a
+      WHERE a.published_at >= ? AND a.published_at <= ?
+        AND NOT EXISTS (
+          SELECT 1 FROM news_briefings b WHERE b.ticker = a.ticker AND b.week_start = ?
+        )`,
     weekStart,
     weekEnd + "T23:59:59Z",
+    weekStart,
   );
 
+  let made = 0;
   for (const { ticker } of grouped) {
+    if (made >= MAX_BRIEFINGS_PER_RUN) break;
     const articles = await db.all<{
       title: string;
       description: string;
@@ -266,6 +275,7 @@ export async function refreshBriefings(
       articles.length,
       new Date().toISOString(),
     );
+    made++;
   }
 
   await db.run(d1, `DELETE FROM news_briefings WHERE week_start < ?`, weeksAgo(BRIEFING_RETENTION_WEEKS));

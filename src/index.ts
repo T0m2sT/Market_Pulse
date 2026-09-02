@@ -157,8 +157,12 @@ export default {
     // Cron schedules. Cloudflare's day-of-week is SHIFTED: 0=Saturday, 1=Sunday, 2=Monday ... 6=Friday
     // (confirmed empirically in this repo's history — the returns crons use "2-6" for real Mon-Fri;
     // the standard "1-5" silently skipped Friday and fired Sun-Thu instead).
-    //  "5 6 * * *"                daily: earnings calendar sync + dividends refresh
-    //  "5 7 * * 2"                Monday only (2 == Monday here): weekly news briefing generation
+    //
+    // Workers FREE tier: max 5 cron triggers per account, 50 subrequests per invocation.
+    //  "5 6 * * *"                daily: earnings calendar sync + dividends + up to 8 weekly briefings
+    //                             (briefings are guarded to companies with news that week and no
+    //                             briefing row yet — a full week drains over ~2 daily runs, keeping
+    //                             any one invocation's Claude-call count bounded)
     //  "* 13-19 * * 2-6"          returns snapshot, every minute, regular market hours (9:30am-4pm ET)
     //  "*/5 8-12,20-23 * * 2-6"   returns snapshot, every 5 min, pre/post market
     //                             (both fetch live T212 prices but do NOT write the holdings doc —
@@ -170,11 +174,6 @@ export default {
       const holdings = await getHoldings(env.PORTFOLIO_KV);
       await refreshEarningsCalendar(env.DB, env.FINNHUB_API_KEY, holdings.positions, env.ANTHROPIC_API_KEY);
       await refreshDividends(env.DB, env.FMP_API_KEY, holdings.positions);
-      return;
-    }
-
-    if (event.cron === "5 7 * * 2") {
-      const holdings = await getHoldings(env.PORTFOLIO_KV);
       await refreshBriefings(env.DB, env.ANTHROPIC_API_KEY, holdings.positions);
       return;
     }
