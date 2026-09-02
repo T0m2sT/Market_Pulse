@@ -1,0 +1,15 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "portfolio-news",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-01",
+  "observability": {
+    "enabled": true
+  },
+  "kv_namespaces": [
+    { "binding": "PORTFOLIO_KV", "id": "4af455192ea6431fb8073f7169160856" }
+  ],
+  "triggers": {
+    "crons": ["5 6 * * *", "* 13-19 * * 2-6", "*/5 8-12,20-23 * * 2-6", "0 6,13,20 * * *"]
+  }
+}

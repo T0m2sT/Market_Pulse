@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#4a3f94"/>
+      <stop offset="55%" stop-color="#6c5ce4"/>
+      <stop offset="100%" stop-color="#9a8bfa"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="30%" cy="20%" r="75%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.16"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="border" cx="50%" cy="32%" r="80%">
+      <stop offset="0%" stop-color="#3a3d47"/>
+      <stop offset="55%" stop-color="#232529"/>
+      <stop offset="100%" stop-color="#131417"/>
+    </radialGradient>
+    <filter id="lineGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="10" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="108" fill="url(#border)"/>
+  <rect x="64" y="64" width="384" height="384" rx="96" fill="url(#bg)"/>
+  <rect x="64" y="64" width="384" height="384" rx="96" fill="url(#glow)"/>
+  <rect x="100" y="100" width="312" height="312" rx="72" fill="url(#border)"/>
+  <g transform="translate(256 256) scale(0.75) translate(-256 -256)">
+    <g stroke="#8a7bf5" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" fill="none" filter="url(#lineGlow)">
+      <polyline points="112,336 208,240 272,296 400,168"/>
+      <polyline points="320,168 400,168 400,248"/>
+    </g>
+    <g>
+      <rect x="140" y="356" width="26" height="52" rx="6" fill="#e0625f"/>
+      <rect x="192" y="320" width="26" height="88" rx="6" fill="#4fb87a"/>
+      <rect x="244" y="340" width="26" height="68" rx="6" fill="#e0625f"/>
+      <rect x="296" y="300" width="26" height="108" rx="6" fill="#4fb87a"/>
+    </g>
+  </g>
+</svg>

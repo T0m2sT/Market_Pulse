@@ -1,0 +1,122 @@
+:root {
+  color-scheme: dark;
+
+  /* Elevation — two steps by luminance, plus a subtle shadow for premium depth */
+  --bg-base: #0b0d11;
+  --bg-elevated-1: #15161d;
+  --bg-elevated-2: #1d1f29;
+  --shadow-card: 0 4px 16px rgba(0, 0, 0, 0.28);
+
+  /* Text */
+  --text-primary: #f5f6f8;
+  --text-secondary: #9a9db0;
+  --text-tertiary: #5f6377;
+
+  /* Accent — deep indigo/violet, premium rather than "finance blue" */
+  --accent: #7c6cf0;
+  --accent-dim: #4a3f94;
+  --accent-wash: rgba(124, 108, 240, 0.14);
+
+  /* P&L: standard finance convention, green up / red down */
+  --positive: #4fb87a;
+  --negative: #e0625f;
+
+  /* Distinct from P&L — used for genuine warnings (stale data), not gain/loss */
+  --warning: #c9a15f;
+
+  /* Ticker avatar palette — muted, distinct, deterministic per ticker (see avatarColor()) */
+  --ticker-1: #6e7fb0;
+  --ticker-2: #7f9e8a;
+  --ticker-3: #b0876e;
+  --ticker-4: #9a7fb0;
+  --ticker-5: #b06e8a;
+  --ticker-6: #6eafb0;
+  --ticker-7: #a0a06e;
+  --ticker-8: #b09a6e;
+
+  /* Structure — Revolut-style heavy rounding */
+  --hairline: rgba(255, 255, 255, 0.07);
+  --radius-sm: 18px;
+  --radius-md: 22px;
+  --radius-lg: 28px;
+
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  font-family: system-ui, -apple-system, "SF Pro Text", "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
+/* iOS Safari (incl. standalone PWA) resizes the visual viewport depending on whether the
+   document itself can scroll, which shifts fixed-position elements (like the bottom nav)
+   inconsistently between pages of different content heights. Locking the outer document so it
+   never scrolls — all scrolling happens inside .app-content instead — keeps the viewport height
+   identical on every page, so the nav's fixed position never moves. */
+body {
+  position: fixed;
+  inset: 0 0 calc(env(safe-area-inset-bottom) * -1);
+  margin: 0;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Every figure in this app is tabular — a scrolling list of misaligned digits reads as broken.
+   Numeric/percentage values stay selectable/copyable — everything else (labels, prose, names) isn't. */
+.num,
+.tabular {
+  font-variant-numeric: tabular-nums;
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+p {
+  margin: 0;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.positive {
+  color: var(--positive);
+}
+
+.negative {
+  color: var(--negative);
+}
