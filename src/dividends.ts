@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { fetchDividends, type FmpDividend } from "./fmp";
+import { fetchYahooDividends } from "./yahoo-dividends";
 import { usdToEurRate } from "./fx";
 import { marketauxLookupTicker, type Holding } from "./holdings";
 
@@ -147,11 +148,18 @@ export async function refreshDividends(
   for (const h of holdings) {
     if (h.isManual) continue;
 
+    const lookupSym = marketauxLookupTicker(h);
     let fmpDividends: FmpDividend[];
     try {
-      fmpDividends = await fetchDividends(fmpKey, marketauxLookupTicker(h));
+      fmpDividends = await fetchDividends(fmpKey, lookupSym);
     } catch {
-      continue; // keep this ticker's existing rows untouched
+      // FMP free tier gates ~half the holdings (HTTP 402). Fall back to Yahoo (ex-date + amount,
+      // payment date estimated). If that also fails, keep this ticker's existing rows untouched.
+      try {
+        fmpDividends = await fetchYahooDividends(lookupSym);
+      } catch {
+        continue;
+      }
     }
 
     const ppy = paymentsPerYear(fmpDividends.map((d) => ({ date: d.date })));
