@@ -274,6 +274,8 @@ Each non-trivial module gets one runnable self-check (assert-based `demo()` / sm
 - `earnings.ts`: results-poll "report time + 10 min" gate for bmo/amc/unknown; "no-op when no ticker reports today"; YoY passthrough; retention keeps 4 past + future per ticker.
 - `db.ts`: a smoke test against `--local` D1 (create, upsert, select, retention delete).
 
+Trivial one-liners (e.g. `mean([]) === 0`) are folded into a neighbouring assertion rather than given their own `it()`. Money and time logic (`resolveDividendRow`, `needsResultsPoll`, `resultsAvailableAt`, `paymentsPerYear`, `isoWeekBounds`) each keep dedicated cases.
+
 Manual E2E after deploy: click a past earnings date → pop-up with real vs est.; a paid dividend → glowing payment entry; News tab shows briefings only.
 
 ## Out of scope

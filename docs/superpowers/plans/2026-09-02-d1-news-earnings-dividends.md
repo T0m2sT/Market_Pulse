@@ -6,7 +6,16 @@
 
 **Architecture:** A D1 database (`market-pulse`) bound to the existing Worker as `DB`. Five tables (`news_articles`, `news_briefings`, `earnings_calendar`, `earnings_results`, `dividends`). Domain modules (`src/news.ts`, `src/earnings.ts`, `src/dividends.ts`) rewritten to read/write D1 through a thin typed helper (`src/db.ts`); no ORM. Holdings, returns, and push subscriptions stay in KV. Crons gain one new `*/10` earnings-results poll that no-ops instantly on non-earnings days, plus a Monday-only news-briefing generation slot. Frontend views rewritten to consume the new API shapes.
 
-**Council review:** `/council` could not run — no provider API keys are configured in this environment (`GEMINI_API_KEY` / `OPENAI_API_KEY` / `GROK_API_KEY` / `PERPLEXITY_API_KEY` all unset). A single-reviewer critical pass was done instead; its accepted findings are folded in below (cron day-of-week `2-6` not `1-5`, briefing generation split to a Monday cron to bound subrequests, `description` column added to `news_articles`, backfill chunked to 15 rows/call, `getEarnings` updatedAt simplified).
+**Review:** ran through the Claude-only `/council` (5 perspectives: architect / pragmatist / skeptic / perf-cost / implementer). Accepted findings, all folded in:
+- cron day-of-week `2-6` not `1-5`, briefing generation split to a Monday-only cron slot to bound subrequests
+- `description` column added to `news_articles` (Marketaux returns it free; briefings from titles alone are thin)
+- backfill chunked to 15 rows/call, runbook loops until drained
+- `getEarnings` `updatedAt` no-op ternary simplified
+- **provision real D1 before Task 4** — dummy all-zeros UUID placeholder only carries Tasks 2–3; execution pauses after Task 3 for `wrangler login` + `d1 create`
+- **verify cron DOW empirically** (Task 3 Step 4b) before writing any cron code, not at deploy
+- earnings poll now also covers `date = yesterday` with an incomplete result — AMC reports (actuals ~20:40 UTC) otherwise got almost no retry coverage in the `11-23` window
+- `refreshEarningsCalendar` guards the per-ticker Finnhub history fetch behind "has a past calendar date with no result row" — saves ~23 calls/day
+Rejected: a `src/dates.ts` helper for 3 copies of `daysAgo` (not worth it at this size); an `estimated` column for the null-prior-locked dividend edge (backfill covers every realistic case — documented as a known limitation instead).
 
 **Tech Stack:** Cloudflare Workers, D1 (SQLite), Wrangler migrations, TypeScript, React 19 + react-router 7, Vitest (new dev dep, pure-logic tests only), Claude Haiku (`claude-haiku-4-5-20251001`) with and without `web_search`.
 
@@ -293,11 +302,16 @@ Add a top-level `d1_databases` array (sibling of `kv_namespaces`):
     {
       "binding": "DB",
       "database_name": "market-pulse",
-      "database_id": "PLACEHOLDER_SET_BY_WRANGLER_D1_CREATE"
+      "database_id": "00000000-0000-0000-0000-000000000000"
     }
   ],
 ```
-> The real `database_id` is filled in during the Migration runbook (end of plan) after `wrangler d1 create market-pulse`. Local dev works with the placeholder because `--local` uses a file-backed DB keyed by `database_name`.
+> **The real `database_id` MUST be set before Task 4.** Provisioning steps (user must run — the current OAuth token lacks D1 scope):
+> ```bash
+> npx wrangler logout && npx wrangler login   # grant D1 permission in the browser
+> npx wrangler d1 create market-pulse         # copy the printed database_id into wrangler.jsonc
+> ```
+> The dummy all-zeros UUID lets `tsc` and `wrangler types` run for Tasks 2–3, but `wrangler d1 migrations apply` / `wrangler dev` need the real id. Execution pauses after Task 3 for this.
 
 - [ ] **Step 2: Add `DB` to `src/env.d.ts`**
 
@@ -322,13 +336,17 @@ npx wrangler types
 ```
 Expected: `worker-configuration.d.ts` regenerated, now including `DB: D1Database` in the base env. Do not hand-edit this file.
 
-- [ ] **Step 4: Apply the migration locally**
+- [ ] **Step 4: Apply the migration locally** (only after the real `database_id` is set — see Step 1 note)
 
 Run:
 ```bash
 npx wrangler d1 migrations apply market-pulse --local
 ```
-Expected: `0001_init.sql` applied, no SQL errors.
+Expected: `0001_init.sql` applied, no SQL errors. If this fails with an auth/uuid error, the `database_id` is still the dummy — complete provisioning first.
+
+- [ ] **Step 4b: Verify the cron day-of-week BEFORE writing any cron code (Task 8)**
+
+The repo comment claims Cloudflare's DOW is shifted (`0=Saturday`). Confirm empirically: after this task's deploy is possible, temporarily add `"0 0 * * 2"` to `wrangler.jsonc` crons, run `npx wrangler deploy`, and check the Cloudflare dashboard → Workers → Triggers: the "Next scheduled run" for that entry must show a **Monday**. If it shows Tuesday, the shift is wrong and every `2-6` / `* * 2` in this plan must become `1-5` / `* * 1`. Remove the throwaway cron after checking. Record the result here: `DOW shift confirmed: [YES / NO]`.
 
 - [ ] **Step 5: Create `src/db.ts`**
 
@@ -460,6 +478,17 @@ describe("resolveDividendRow", () => {
     expect(row.locked).toBe(1);
     expect(row.per_share_eur).toBe(1.4);
   });
+
+  it("locked with no prior row (ex-date passed before first sync) falls back to today's rate and qty — best effort", () => {
+    const row = resolveDividendRow(base, null); // ex 2026-08-15, today 2026-09-02, no prior
+    expect(row.locked).toBe(1);
+    // Known limitation: a dividend whose ex-date passed before D1 ever stored it has no frozen
+    // snapshot to carry forward, so it's valued at today's FX + today's share count. The backfill
+    // (which runs on first deploy while FMP still returns August dividends) covers every realistic
+    // pre-deploy case; only a holding added weeks after its own ex-date hits this path.
+    expect(row.per_share_eur).toBeCloseTo(1.7 * 0.92);
+    expect(row.qualifying_shares).toBe(3.42);
+  });
 });
 ```
 
@@ -545,6 +574,10 @@ export function resolveDividendRow(input: ResolveInput, prior: PriorRow | null):
   const wasLocked = prior?.locked === 1;
   const locked = wasLocked || input.exDate < input.today;
 
+  // `locked && prior`: freeze the stored snapshot. `locked && !prior`: the ex-date passed before
+  // this dividend was ever stored (D1 empty at first deploy, or holding added late) — no snapshot
+  // to freeze, so fall back to today's FX + today's share count. Best effort; the backfill covers
+  // every realistic pre-deploy case since FMP still returns August dividends on first run.
   const perShareEur = locked && prior ? prior.per_share_eur : input.perShareUsd * input.usdToEur;
   const qualifyingShares = locked && prior ? prior.qualifying_shares : input.quantity;
   const yieldPct = locked && prior
@@ -706,17 +739,14 @@ import { briefingSentiment, shouldGenerateBriefings } from "./news";
 describe("briefingSentiment", () => {
   it("is the arithmetic mean of article sentiments", () => {
     expect(briefingSentiment([0.5, -0.1, 0.2])).toBeCloseTo(0.2);
-  });
-  it("is 0 for no articles", () => {
     expect(briefingSentiment([])).toBe(0);
   });
 });
 
 describe("shouldGenerateBriefings", () => {
-  it("runs when no briefing exists for the just-completed week", () => {
+  it("runs only when no briefing exists for the just-completed week", () => {
     expect(shouldGenerateBriefings("2026-08-24", null)).toBe(true);
-  });
-  it("skips when a briefing already exists for that week", () => {
+    expect(shouldGenerateBriefings("2026-08-24", "2026-08-17")).toBe(true);
     expect(shouldGenerateBriefings("2026-08-24", "2026-08-24")).toBe(false);
   });
 });
@@ -1266,7 +1296,19 @@ export async function refreshEarningsCalendar(
   await db.batch(d1, statements);
 
   // Seed earnings_results (EPS only) from Finnhub history for past dates that have no result row yet.
+  // Guard: skip the Finnhub call entirely for a ticker that already has a result row for every past
+  // calendar date — on most daily runs this is all of them, saving ~23 Finnhub calls/day.
   for (const [lookup, h] of lookupToHolding) {
+    const gap = await db.first<{ n: number }>(
+      d1,
+      `SELECT COUNT(*) AS n FROM earnings_calendar ec
+        WHERE ec.ticker = ? AND ec.date < ?
+          AND NOT EXISTS (SELECT 1 FROM earnings_results er WHERE er.ticker = ec.ticker AND er.date = ec.date)`,
+      h.ticker,
+      today(),
+    );
+    if ((gap?.n ?? 0) === 0) continue;
+
     const history = await fetchEarningsHistory(finnhubToken, lookup);
     for (const r of history.slice(0, 8)) {
       // Finnhub's `period` is a fiscal quarter-end date string.
@@ -1369,12 +1411,19 @@ export async function pollEarningsResults(
   holdings: Holding[],
 ): Promise<void> {
   const t = today();
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  // Include yesterday so an AMC report (actuals ~20:40 UTC) whose poll window ran out the same
+  // evening still gets picked up the next morning until it has a complete result row.
   const due = await db.all<{ ticker: string; date: string; hour: string }>(
     d1,
-    `SELECT ticker, date, hour FROM earnings_calendar WHERE date = ?`,
+    `SELECT ec.ticker, ec.date, ec.hour
+       FROM earnings_calendar ec
+       LEFT JOIN earnings_results er ON er.ticker = ec.ticker AND er.date = ec.date
+      WHERE ec.date IN (?, ?) AND (er.ticker IS NULL OR er.beat IS NULL)`,
+    yesterday,
     t,
   );
-  if (due.length === 0) return; // no-op on non-earnings days
+  if (due.length === 0) return; // no-op on non-earnings days (and days where all results are already in)
 
   const now = new Date();
   const nameByTicker = new Map(holdings.map((h) => [h.ticker, h.name]));
@@ -2856,4 +2905,6 @@ These steps are **not** code tasks — they provision the remote D1 and deploy. 
 5. `getEarnings` had a no-op ternary for `updatedAt`. → Simplified.
 6. Subrequest-limit / Workers-plan assumption was implicit. → Explicit pre-Task-3 check added (the current code already proves Paid plan).
 
-**Rejected / deferred:** moving `earnings:web:KAP.L` state out of KV (still fine in KV, out of scope); adding a `briefings-now` route (YAGNI — Monday cron or `news/refresh` + wait); per-ticker withholding tax (spec explicitly out of scope).
+**Rejected / deferred:** moving `earnings:web:KAP.L` state out of KV (still fine in KV, out of scope); adding a `briefings-now` route (YAGNI — Monday cron or `news/refresh` + wait); per-ticker withholding tax (spec explicitly out of scope); `src/dates.ts` shared helper (3 small copies of `daysAgo`, revisit at a 4th consumer); an `estimated` flag column for the null-prior-locked dividend path (backfill covers every realistic case; documented as a code-comment limitation in `resolveDividendRow`).
+
+**Execution checkpoint:** Tasks 1–3 are pure code (no D1 runtime). After Task 3, execution STOPS and hands the user: (a) `npx wrangler logout && npx wrangler login` with D1 scope, (b) `npx wrangler d1 create market-pulse` → paste `database_id` into `wrangler.jsonc`, (c) the Task 3 Step 4b DOW check. Tasks 4–15 resume once the real `database_id` is committed.
