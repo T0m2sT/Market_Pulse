@@ -7,7 +7,7 @@ import Returns from "./views/Returns";
 import Dividends from "./views/Dividends";
 import Holdings from "./views/Holdings";
 import Settings from "./views/Settings";
-import Article from "./views/Article";
+import Briefing from "./views/Briefing";
 import { TodayIcon, NewsIcon, EarningsIcon, ReturnsIcon, DividendsIcon } from "./components/TabIcons";
 import "./App.css";
 
@@ -21,7 +21,7 @@ const TABS = [
 
 // Detail screens pushed from a tab (not top-level destinations) hide the top bar's tabs,
 // so they read as "back to where I came from" rather than a tab switch.
-const DETAIL_PREFIXES = ["/holdings", "/article/", "/settings"];
+const DETAIL_PREFIXES = ["/holdings", "/briefing/", "/settings"];
 
 function isDetailRoute(pathname: string): boolean {
   return DETAIL_PREFIXES.some((p) => pathname === p || pathname.startsWith(p));
@@ -104,7 +104,7 @@ function SwipeableContent() {
       <Routes>
         <Route path="/" element={<Today />} />
         <Route path="/news" element={<News />} />
-        <Route path="/article/:id" element={<Article />} />
+        <Route path="/briefing/:ticker/:weekStart" element={<Briefing />} />
         <Route path="/earnings" element={<Earnings />} />
         <Route path="/returns" element={<Returns />} />
         <Route path="/dividends" element={<Dividends />} />

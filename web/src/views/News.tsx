@@ -14,12 +14,13 @@ export default function News() {
   const [error, setError] = useState<string | null>(null);
   const [tickerFilter, setTickerFilter] = useState("");
   const [sentimentFilter, setSentimentFilter] = useState<"all" | "positive" | "negative">("all");
+  const [seenFilter, setSeenFilter] = useState<"all" | "unseen">("all");
 
   useEffect(() => {
     api
       .get<NewsDoc>("/api/news")
       .then(setDoc)
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"));
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"));
     api.get<HoldingsDoc>("/api/holdings").then(setHoldings).catch(() => {});
   }, []);
 
@@ -27,16 +28,19 @@ export default function News() {
 
   const filtered = useMemo(() => {
     if (!doc) return [];
-    return doc.articles.filter((a) => {
-      if (tickerFilter && !a.ticker.toLowerCase().includes(tickerFilter.toLowerCase())) return false;
-      if (sentimentFilter === "positive" && a.sentiment < 0) return false;
-      if (sentimentFilter === "negative" && a.sentiment >= 0) return false;
+    return doc.briefings.filter((b) => {
+      if (tickerFilter && !b.ticker.toLowerCase().includes(tickerFilter.toLowerCase())) return false;
+      if (sentimentFilter === "positive" && b.sentiment < 0) return false;
+      if (sentimentFilter === "negative" && b.sentiment >= 0) return false;
+      if (seenFilter === "unseen" && b.seen) return false;
       return true;
     });
-  }, [doc, tickerFilter, sentimentFilter]);
+  }, [doc, tickerFilter, sentimentFilter, seenFilter]);
 
   if (error) return <p style={{ color: "var(--negative)" }}>{error}</p>;
   if (!doc) return <p style={{ color: "var(--text-tertiary)" }}>Loading…</p>;
+
+  let lastWeek = "";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
@@ -67,48 +71,92 @@ export default function News() {
         ))}
       </div>
 
-      {filtered.length === 0 && (
-        <p style={{ color: "var(--text-tertiary)" }}>No articles match.</p>
-      )}
+      <div style={{ display: "flex", gap: "var(--space-2)" }}>
+        {(["all", "unseen"] as const).map((s) => (
+          <Button
+            key={s}
+            onClick={() => setSeenFilter(s)}
+            style={{
+              flex: 1,
+              padding: "var(--space-2)",
+              background: seenFilter === s ? "var(--accent-dim)" : "var(--bg-elevated-1)",
+              textTransform: "capitalize",
+              fontWeight: 400,
+            }}
+          >
+            {s}
+          </Button>
+        ))}
+      </div>
 
-      {filtered.map((a) => {
-        const isPositive = a.sentiment >= 0;
+      {filtered.length === 0 && <p style={{ color: "var(--text-tertiary)" }}>No briefings match.</p>}
+
+      {filtered.map((b) => {
+        const isPositive = b.sentiment >= 0;
+        const showWeekHeader = b.weekStart !== lastWeek;
+        lastWeek = b.weekStart;
         return (
-          <Card key={a.id}>
-            <button
-              onClick={() => navigate(`/article/${a.id}`)}
-              style={{ display: "block", width: "100%", background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer" }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", marginBottom: "var(--space-2)" }}>
-                <TickerAvatar ticker={a.ticker} logo={holdingByTicker.get(a.ticker)?.logo} size={24} />
-                <span style={{ color: "var(--accent)", fontWeight: 600, fontSize: 13 }}>{a.ticker}</span>
-                <span
-                  className={`num ${isPositive ? "positive" : "negative"}`}
-                  style={{ fontSize: 11, padding: "2px 7px", borderRadius: 999, background: "var(--bg-elevated-2)" }}
-                >
-                  {isPositive ? "+" : ""}{a.sentiment.toFixed(2)}
-                </span>
-                <span style={{ fontSize: 12, color: "var(--text-tertiary)", marginLeft: "auto" }}>
-                  {new Date(a.publishedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-                </span>
-              </div>
-              <p style={{ fontSize: 15, fontWeight: 500, marginBottom: "var(--space-1)" }}>{a.title}</p>
-              {a.description && (
-                <p
+          <div key={`${b.ticker}:${b.weekStart}`}>
+            {showWeekHeader && (
+              <h3 style={{ margin: "var(--space-2) 0", color: "var(--text-secondary)" }}>
+                Week of{" "}
+                {new Date(b.weekStart + "T00:00:00").toLocaleDateString(undefined, {
+                  month: "long",
+                  day: "numeric",
+                })}
+              </h3>
+            )}
+            <Card>
+              <button
+                onClick={() => navigate(`/briefing/${b.ticker}/${b.weekStart}`)}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  textAlign: "left",
+                  cursor: "pointer",
+                }}
+              >
+                <div
                   style={{
-                    fontSize: 13,
-                    color: "var(--text-secondary)",
-                    display: "-webkit-box",
-                    WebkitLineClamp: 3,
-                    WebkitBoxOrient: "vertical",
-                    overflow: "hidden",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "var(--space-2)",
+                    marginBottom: "var(--space-2)",
                   }}
                 >
-                  {a.description}
-                </p>
-              )}
-            </button>
-          </Card>
+                  <TickerAvatar ticker={b.ticker} logo={holdingByTicker.get(b.ticker)?.logo} size={24} />
+                  <span style={{ color: "var(--accent)", fontWeight: 600, fontSize: 13 }}>{b.ticker}</span>
+                  <span
+                    className={`num ${isPositive ? "positive" : "negative"}`}
+                    style={{
+                      fontSize: 11,
+                      padding: "2px 7px",
+                      borderRadius: 999,
+                      background: "var(--bg-elevated-2)",
+                    }}
+                  >
+                    {isPositive ? "+" : ""}
+                    {b.sentiment.toFixed(2)}
+                  </span>
+                  {!b.seen && (
+                    <span
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: 999,
+                        background: "var(--accent)",
+                        marginLeft: "auto",
+                      }}
+                    />
+                  )}
+                </div>
+                <p style={{ fontSize: 14, color: "var(--text-secondary)" }}>{b.summary}</p>
+              </button>
+            </Card>
+          </div>
         );
       })}
     </div>
