@@ -7,6 +7,9 @@ const CALENDAR_LOOKBACK_DAYS = 400;
 const CALENDAR_FUTURE_DAYS = 30;
 const KEEP_PAST_PER_TICKER = 4;
 const WEB_SEARCH_FALLBACK_TICKERS = new Set(["KAP.L"]);
+/** checked_at for EPS-only seed rows — marks "never enriched by lookupEarningsResult", so the
+ *  backfill's "checked_at older than an hour" filter always picks them up on its first pass. */
+const SEED_CHECKED_AT = "1970-01-01T00:00:00.000Z";
 
 export interface CalendarRowEntry {
   ticker: string;
@@ -221,7 +224,7 @@ export async function refreshEarningsCalendar(
         rec.actual,
         rec.estimate,
         beat,
-        new Date().toISOString(),
+        SEED_CHECKED_AT,
       );
     }
   }
@@ -261,7 +264,7 @@ export async function refreshEarningsCalendar(
         entry.epsActual,
         entry.epsEstimate,
         beat,
-        new Date().toISOString(),
+        SEED_CHECKED_AT,
       );
     }
   }
