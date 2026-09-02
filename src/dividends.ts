@@ -1,13 +1,13 @@
 import { db } from "./db";
-import { fetchDividends, type FmpDividend } from "./fmp";
-import { fetchEodhdDividends } from "./eodhd-dividends";
-import { usdToEurRate } from "./fx";
+import { fetchEodhdDividends, type DividendEvent } from "./eodhd-dividends";
+import { currencyToEurRate } from "./fx";
 import { marketauxLookupTicker, type Holding } from "./holdings";
 
 export interface DividendRow {
   ticker: string;
   exDate: string;
   paymentDate: string;
+  /** Per share in the stock's reporting currency (USD for US listings). Column name is historical. */
   perShareUsd: number;
   perShareEur: number;
   qualifyingShares: number;
@@ -52,15 +52,18 @@ interface ResolveInput {
   ticker: string;
   exDate: string;
   paymentDate: string;
-  perShareUsd: number;
-  usdToEur: number;
+  /** Per share in the dividend's reporting currency. */
+  perShare: number;
+  /** Conversion rate from that currency to EUR. */
+  fxToEur: number;
   quantity: number;
-  currentPrice: number;
+  /** Current share price in EUR (T212 account currency) — yield is computed entirely in EUR. */
+  currentPriceEur: number;
   paymentsPerYear: number;
   today: string;
 }
 
-/** Pure: computes the row to upsert given the FMP dividend + this ticker's prior stored row (or null). */
+/** Pure: computes the row to upsert given the dividend event + this ticker's prior stored row (or null). */
 export function resolveDividendRow(
   input: ResolveInput,
   prior: PriorRow | null,
@@ -80,22 +83,21 @@ export function resolveDividendRow(
 
   // `locked && prior`: freeze the stored snapshot. `locked && !prior`: the ex-date passed before
   // this dividend was ever stored (D1 empty at first deploy, or holding added late) — no snapshot
-  // to freeze, so fall back to today's FX + today's share count. Best effort; the backfill covers
-  // every realistic pre-deploy case since FMP still returns August dividends on first run.
-  const perShareEur = locked && prior ? prior.per_share_eur : input.perShareUsd * input.usdToEur;
+  // to freeze, so fall back to today's FX + today's share count. Best effort.
+  const perShareEur = locked && prior ? prior.per_share_eur : input.perShare * input.fxToEur;
   const qualifyingShares = locked && prior ? prior.qualifying_shares : input.quantity;
   const yieldPct =
     locked && prior
       ? prior.yield_pct
-      : input.currentPrice > 0
-        ? ((input.perShareUsd * input.paymentsPerYear) / input.currentPrice) * 100
+      : input.currentPriceEur > 0
+        ? ((perShareEur * input.paymentsPerYear) / input.currentPriceEur) * 100
         : null;
 
   return {
     ticker: input.ticker,
     ex_date: input.exDate,
     payment_date: input.paymentDate,
-    per_share_usd: input.perShareUsd,
+    per_share_usd: input.perShare,
     per_share_eur: perShareEur,
     qualifying_shares: qualifyingShares,
     amount_eur: perShareEur * qualifyingShares,
@@ -131,62 +133,62 @@ export async function getDividends(d1: D1Database): Promise<DividendRow[]> {
 
 export async function refreshDividends(
   d1: D1Database,
-  fmpKey: string,
+  eodhdKey: string,
   holdings: Holding[],
-  eodhdKey?: string,
 ): Promise<DividendRow[]> {
   const today = new Date().toISOString().slice(0, 10);
-
-  let usdToEur: number;
-  try {
-    usdToEur = await usdToEurRate();
-  } catch {
-    return getDividends(d1); // don't write unconverted USD as EUR
-  }
-
   const paymentRetentionFloor = daysAgo(RETENTION_DAYS);
+
+  // FX rates are cached per-currency in fx.ts; look each up lazily and skip a row if its
+  // currency can't be converted (rather than writing a wrong EUR figure).
+  const fxCache = new Map<string, number | null>();
+  async function fx(currency: string): Promise<number | null> {
+    if (!fxCache.has(currency)) {
+      try {
+        fxCache.set(currency, await currencyToEurRate(currency));
+      } catch {
+        fxCache.set(currency, null);
+      }
+    }
+    return fxCache.get(currency) ?? null;
+  }
 
   for (const h of holdings) {
     if (h.isManual) continue;
 
-    const lookupSym = marketauxLookupTicker(h);
-    let fmpDividends: FmpDividend[];
+    let events: DividendEvent[];
     try {
-      fmpDividends = await fetchDividends(fmpKey, lookupSym);
+      events = await fetchEodhdDividends(eodhdKey, marketauxLookupTicker(h));
     } catch {
-      // FMP free tier gates ~half the holdings (HTTP 402). Fall back to EODHD (real ex/pay/
-      // declaration dates, split-adjusted per-share). If that also fails, keep this ticker's
-      // existing rows untouched.
-      if (!eodhdKey) continue;
-      try {
-        fmpDividends = await fetchEodhdDividends(eodhdKey, lookupSym);
-      } catch {
-        continue;
-      }
+      continue; // provider hiccup — keep this ticker's existing rows untouched
     }
+    if (events.length === 0) continue;
 
-    const ppy = paymentsPerYear(fmpDividends.map((d) => ({ date: d.date })));
+    const ppy = paymentsPerYear(events.map((e) => ({ date: e.exDate })));
 
-    for (const div of fmpDividends) {
-      if (div.date < EARLIEST_EX_DATE) continue;
-      if (div.paymentDate < paymentRetentionFloor) continue;
+    for (const ev of events) {
+      if (ev.exDate < EARLIEST_EX_DATE) continue;
+      if (ev.paymentDate < paymentRetentionFloor) continue;
+
+      const rate = await fx(ev.currency);
+      if (rate === null) continue;
 
       const prior = await db.first<PriorRow>(
         d1,
         `SELECT per_share_eur, qualifying_shares, yield_pct, locked FROM dividends WHERE ticker = ? AND ex_date = ?`,
         h.ticker,
-        div.date,
+        ev.exDate,
       );
 
       const row = resolveDividendRow(
         {
           ticker: h.ticker,
-          exDate: div.date,
-          paymentDate: div.paymentDate,
-          perShareUsd: div.dividend,
-          usdToEur,
+          exDate: ev.exDate,
+          paymentDate: ev.paymentDate,
+          perShare: ev.perShare,
+          fxToEur: rate,
           quantity: h.quantity,
-          currentPrice: h.currentPrice,
+          currentPriceEur: h.currentPrice,
           paymentsPerYear: ppy,
           today,
         },

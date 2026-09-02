@@ -32,10 +32,10 @@ describe("resolveDividendRow", () => {
     ticker: "KLAC",
     exDate: "2026-08-15",
     paymentDate: "2026-09-01",
-    perShareUsd: 1.7,
-    usdToEur: 0.92,
+    perShare: 1.7,
+    fxToEur: 0.92,
     quantity: 3.42,
-    currentPrice: 110,
+    currentPriceEur: 110,
     paymentsPerYear: 4,
     today: "2026-09-02",
   };
@@ -61,7 +61,8 @@ describe("resolveDividendRow", () => {
     expect(row.locked).toBe(0);
     expect(row.per_share_eur).toBeCloseTo(1.7 * 0.92);
     expect(row.qualifying_shares).toBe(3.42);
-    expect(row.yield_pct).toBeCloseTo(((1.7 * 4) / 110) * 100);
+    // yield is computed in EUR: (perShareEur * ppy) / priceEur * 100
+    expect(row.yield_pct).toBeCloseTo(((1.7 * 0.92 * 4) / 110) * 100);
     expect(row.amount_eur).toBeCloseTo(1.7 * 0.92 * 3.42);
   });
 

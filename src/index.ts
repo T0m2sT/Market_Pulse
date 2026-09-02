@@ -67,7 +67,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
 
     if (url.pathname === "/api/dividends/refresh" && request.method === "POST") {
       const holdings = await getHoldings(env.PORTFOLIO_KV);
-      await refreshDividends(env.DB, env.FMP_API_KEY, holdings.positions, env.EODHD_API_KEY);
+      await refreshDividends(env.DB, env.EODHD_API_KEY, holdings.positions);
       return Response.json({ status: "ok" });
     }
 
@@ -173,7 +173,7 @@ export default {
     if (event.cron === "5 6 * * *") {
       const holdings = await getHoldings(env.PORTFOLIO_KV);
       await refreshEarningsCalendar(env.DB, env.FINNHUB_API_KEY, holdings.positions, env.ANTHROPIC_API_KEY);
-      await refreshDividends(env.DB, env.FMP_API_KEY, holdings.positions, env.EODHD_API_KEY);
+      await refreshDividends(env.DB, env.EODHD_API_KEY, holdings.positions);
       await refreshBriefings(env.DB, env.ANTHROPIC_API_KEY, holdings.positions);
       return;
     }
