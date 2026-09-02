@@ -1,36 +1,109 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
-import type { EarningsDoc, HoldingsDoc } from "../api/types";
+import type { EarningsDoc, HoldingsDoc, EarningsResult, CalendarRowEntry } from "../api/types";
 import { Card, Freshness, FilterMenu } from "../components/Card";
 import { TickerAvatar } from "../components/TickerAvatar";
 import { Calendar, type CalendarEvent } from "../components/Calendar";
 import { Modal } from "../components/Modal";
-import { usd, abbreviateUsd, fiscalQuarterLabel } from "../format";
+import { usd, abbreviateUsd } from "../format";
 
 type SortMode = "name" | "weight";
+const SORT_LABELS: Record<SortMode, string> = { name: "Name", weight: "Weight" };
 
-const SORT_LABELS: Record<SortMode, string> = {
-  name: "Name",
-  weight: "Weight",
-};
+function pct(v: number | null): string {
+  if (v === null) return "—";
+  return `${v >= 0 ? "+" : ""}${v.toFixed(0)}%`;
+}
+
+function ResultRow({
+  label,
+  value,
+  est,
+  good,
+  hasCompare,
+}: {
+  label: string;
+  value: string;
+  est: string | null;
+  good: boolean;
+  hasCompare: boolean;
+}) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+      <span style={{ fontSize: 13, color: "var(--text-tertiary)" }}>{label}</span>
+      <span style={{ display: "flex", gap: "var(--space-2)", alignItems: "baseline" }}>
+        <span
+          className="num"
+          style={{
+            fontSize: 15,
+            fontWeight: 600,
+            color: hasCompare ? (good ? "var(--positive)" : "var(--negative)") : "var(--text-primary)",
+          }}
+        >
+          {value}
+        </span>
+        {est && (
+          <span className="num" style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
+            est. {est}
+          </span>
+        )}
+      </span>
+    </div>
+  );
+}
+
+function ResultBody({ r }: { r: EarningsResult }) {
+  const revBeat = r.revenue !== null && r.revenueEstimate !== null && r.revenue >= r.revenueEstimate;
+  const epsBeat = r.eps !== null && r.epsEstimate !== null && r.eps >= r.epsEstimate;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+      <ResultRow
+        label="Revenue"
+        value={r.revenue !== null ? abbreviateUsd(r.revenue) : "—"}
+        est={r.revenueEstimate !== null ? abbreviateUsd(r.revenueEstimate) : null}
+        good={revBeat}
+        hasCompare={r.revenue !== null && r.revenueEstimate !== null}
+      />
+      <ResultRow
+        label="EPS"
+        value={r.eps !== null ? usd(r.eps) : "—"}
+        est={r.epsEstimate !== null ? usd(r.epsEstimate) : null}
+        good={epsBeat}
+        hasCompare={r.eps !== null && r.epsEstimate !== null}
+      />
+      {r.guidanceText && (
+        <div>
+          <p style={{ fontSize: 11, color: "var(--text-tertiary)" }}>Guidance</p>
+          <p style={{ fontSize: 14 }}>{r.guidanceText}</p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function Earnings() {
   const [doc, setDoc] = useState<EarningsDoc | null>(null);
   const [holdings, setHoldings] = useState<HoldingsDoc | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [selectedResult, setSelectedResult] = useState<EarningsResult | null>(null);
   const [sort, setSort] = useState<SortMode>("name");
 
   useEffect(() => {
     api
       .get<EarningsDoc>("/api/earnings")
       .then(setDoc)
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"));
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"));
     api.get<HoldingsDoc>("/api/holdings").then(setHoldings).catch(() => {});
   }, []);
 
   const calendarEvents: CalendarEvent[] = useMemo(
-    () => (doc?.upcoming ?? []).map((e) => ({ date: e.date, kind: "earnings" as const, ticker: e.ticker })),
+    () =>
+      (doc?.calendar ?? []).map((e) => ({
+        date: e.date,
+        kind: e.isPast ? ("earnings-past" as const) : ("earnings" as const),
+        ticker: e.ticker,
+      })),
     [doc],
   );
 
@@ -38,15 +111,20 @@ export default function Earnings() {
   if (!doc) return <p style={{ color: "var(--text-tertiary)" }}>Loading…</p>;
 
   const holdingByTicker = new Map((holdings?.positions ?? []).map((p) => [p.ticker, p]));
-  const shownEarnings = selectedDate ? doc.upcoming.filter((e) => e.date === selectedDate) : [];
+
+  const dateRows: CalendarRowEntry[] = selectedDate
+    ? doc.calendar.filter((e) => e.date === selectedDate)
+    : [];
+  const resultForDate = (ticker: string, date: string): EarningsResult | null =>
+    (doc.results[ticker] ?? []).find((r) => r.date === date) ?? null;
 
   const tickersWithResults = Object.entries(doc.results)
-    .filter(([, results]) => results.length > 0)
-    .sort(([tickerA], [tickerB]) => {
-      const a = holdingByTicker.get(tickerA);
-      const b = holdingByTicker.get(tickerB);
-      if (sort === "weight") return (b?.weight ?? 0) - (a?.weight ?? 0);
-      return (a?.name ?? tickerA).localeCompare(b?.name ?? tickerB);
+    .filter(([, r]) => r.length > 0)
+    .sort(([a], [b]) => {
+      const ha = holdingByTicker.get(a);
+      const hb = holdingByTicker.get(b);
+      if (sort === "weight") return (hb?.weight ?? 0) - (ha?.weight ?? 0);
+      return (ha?.name ?? a).localeCompare(hb?.name ?? b);
     });
 
   return (
@@ -58,60 +136,75 @@ export default function Earnings() {
         <Calendar events={calendarEvents} onSelectDate={setSelectedDate} />
       </Card>
 
-      {selectedDate && shownEarnings.length > 0 && (
+      {selectedDate && dateRows.length > 0 && (
         <Modal
-          title={new Date(selectedDate + "T00:00:00").toLocaleDateString(undefined, { month: "long", day: "numeric" })}
+          title={new Date(selectedDate + "T00:00:00").toLocaleDateString(undefined, {
+            month: "long",
+            day: "numeric",
+          })}
           onClose={() => setSelectedDate(null)}
         >
           <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
-            {shownEarnings.map((e) => {
+            {dateRows.map((e) => {
               const weight = holdingByTicker.get(e.ticker)?.weight;
+              const result = e.isPast ? resultForDate(e.ticker, e.date) : null;
               return (
                 <div key={e.ticker}>
                   <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
                     <TickerAvatar ticker={e.ticker} logo={e.logo} />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ fontSize: 15, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {e.name}
-                      </p>
-                      <p
-                        className="num"
-                        style={{ fontSize: 12, color: "var(--text-tertiary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                      >
+                      <p style={{ fontSize: 15, fontWeight: 500 }}>{e.name}</p>
+                      <p className="num" style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
                         {weight !== undefined && <>{(weight * 100).toFixed(1)}% · </>}
                         {e.quarter > 0 ? `Q${e.quarter} ${e.year}` : e.year}
                         {e.isEstimate && " (est.)"}
                       </p>
                     </div>
                   </div>
-                  {(e.epsEstimate !== null || e.revenueEstimate !== null) && (
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-around",
-                        marginTop: "var(--space-3)",
-                        paddingTop: "var(--space-3)",
-                        borderTop: "1px solid var(--hairline)",
-                      }}
-                    >
-                      {e.epsEstimate !== null && (
-                        <div style={{ textAlign: "center" }}>
-                          <p style={{ fontSize: 11, color: "var(--text-tertiary)" }}>EPS est.</p>
-                          <p className="num" style={{ fontSize: 14 }}>{usd(e.epsEstimate)}</p>
-                        </div>
-                      )}
-                      {e.revenueEstimate !== null && (
-                        <div style={{ textAlign: "center" }}>
-                          <p style={{ fontSize: 11, color: "var(--text-tertiary)" }}>Revenue est.</p>
-                          <p className="num" style={{ fontSize: 14 }}>{abbreviateUsd(e.revenueEstimate)}</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  <div
+                    style={{
+                      marginTop: "var(--space-3)",
+                      paddingTop: "var(--space-3)",
+                      borderTop: "1px solid var(--hairline)",
+                    }}
+                  >
+                    {e.isPast ? (
+                      result ? (
+                        <ResultBody r={result} />
+                      ) : (
+                        <p style={{ fontSize: 13, color: "var(--text-tertiary)" }}>Results not in yet.</p>
+                      )
+                    ) : (
+                      <div style={{ display: "flex", justifyContent: "space-around" }}>
+                        {e.epsEstimate !== null && (
+                          <div style={{ textAlign: "center" }}>
+                            <p style={{ fontSize: 11, color: "var(--text-tertiary)" }}>EPS est.</p>
+                            <p className="num" style={{ fontSize: 14 }}>
+                              {usd(e.epsEstimate)}
+                            </p>
+                          </div>
+                        )}
+                        {e.revenueEstimate !== null && (
+                          <div style={{ textAlign: "center" }}>
+                            <p style={{ fontSize: 11, color: "var(--text-tertiary)" }}>Revenue est.</p>
+                            <p className="num" style={{ fontSize: 14 }}>
+                              {abbreviateUsd(e.revenueEstimate)}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               );
             })}
           </div>
+        </Modal>
+      )}
+
+      {selectedResult && (
+        <Modal title={selectedResult.period} onClose={() => setSelectedResult(null)}>
+          <ResultBody r={selectedResult} />
         </Modal>
       )}
 
@@ -122,69 +215,71 @@ export default function Earnings() {
       {tickersWithResults.length === 0 && (
         <p style={{ color: "var(--text-tertiary)" }}>No historical results yet.</p>
       )}
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: "var(--space-3)" }}>
-      {tickersWithResults.map(([ticker, results]) => {
-        const h = holdingByTicker.get(ticker);
-        return (
-          <Card key={ticker}>
-            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", marginBottom: "var(--space-3)" }}>
-              <TickerAvatar ticker={ticker} logo={h?.logo} size={28} />
-              <div style={{ minWidth: 0 }}>
-                <p style={{ fontSize: 15, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {h?.name ?? ticker}
-                </p>
-                <p style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{h?.displayTicker ?? ticker}</p>
+
+      <div
+        style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: "var(--space-3)" }}
+      >
+        {tickersWithResults.map(([ticker, results]) => {
+          const h = holdingByTicker.get(ticker);
+          return (
+            <Card key={ticker}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "var(--space-2)",
+                  marginBottom: "var(--space-3)",
+                }}
+              >
+                <TickerAvatar ticker={ticker} logo={h?.logo} size={28} />
+                <div style={{ minWidth: 0 }}>
+                  <p
+                    style={{
+                      fontSize: 15,
+                      fontWeight: 500,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {h?.name ?? ticker}
+                  </p>
+                  <p style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{h?.displayTicker ?? ticker}</p>
+                </div>
               </div>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column" }}>
-              {results.slice(0, 4).map((r) => {
-                const beat = r.surprisePercent !== null && r.surprisePercent >= 0;
-                const hasFinancials = r.actual !== null || r.estimate !== null;
-                return (
-                  <div
-                    key={r.period}
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                {results.slice(0, 4).map((r) => (
+                  <button
+                    key={r.date}
+                    onClick={() => setSelectedResult(r)}
                     style={{
                       padding: "var(--space-2) 0",
                       borderTop: "1px solid var(--hairline)",
+                      background: "none",
+                      border: "none",
+                      borderTopWidth: 1,
+                      borderTopStyle: "solid",
+                      borderTopColor: "var(--hairline)",
+                      textAlign: "left",
+                      cursor: "pointer",
+                      width: "100%",
                     }}
                   >
-                    <p style={{ fontSize: 12, color: "var(--text-secondary)" }}>{fiscalQuarterLabel(r.period)}</p>
-                    {hasFinancials ? (
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginTop: 2 }}>
-                        <div>
-                          <p className="num" style={{ fontSize: 14 }}>
-                            {r.actual !== null ? usd(r.actual) : "—"}
-                          </p>
-                          <p className="num" style={{ fontSize: 11, color: "var(--text-tertiary)" }}>
-                            est. {r.estimate !== null ? usd(r.estimate) : "—"}
-                          </p>
-                        </div>
-                        {r.surprisePercent !== null && (
-                          <span
-                            className={`num ${beat ? "positive" : "negative"}`}
-                            style={{
-                              fontSize: 11,
-                              fontWeight: 600,
-                              padding: "3px 7px",
-                              borderRadius: 999,
-                              background: "var(--bg-elevated-1)",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            {beat ? "▲" : "▼"} {Math.abs(r.surprisePercent).toFixed(1)}%
-                          </span>
-                        )}
-                      </div>
-                    ) : (
-                      <p className="num" style={{ fontSize: 14, marginTop: 2 }}>Reported</p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </Card>
-        );
-      })}
+                    <p style={{ fontSize: 12, color: "var(--text-secondary)" }}>{r.period}</p>
+                    <div style={{ display: "flex", gap: "var(--space-3)", marginTop: 2 }}>
+                      <span className="num" style={{ fontSize: 12 }}>
+                        Rev {pct(r.revenueYoyPct)} YoY
+                      </span>
+                      <span className="num" style={{ fontSize: 12 }}>
+                        EPS {pct(r.epsYoyPct)} YoY
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </Card>
+          );
+        })}
       </div>
     </div>
   );

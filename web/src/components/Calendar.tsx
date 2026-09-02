@@ -2,7 +2,7 @@ import { useState } from "react";
 
 export interface CalendarEvent {
   date: string; // YYYY-MM-DD
-  kind: "earnings" | "dividend-ex" | "dividend-pay";
+  kind: "earnings" | "earnings-past" | "dividend-ex" | "dividend-pay";
   ticker: string;
 }
 
@@ -14,7 +14,8 @@ function toKey(y: number, m: number, d: number): string {
 }
 
 const KIND_COLOR: Record<CalendarEvent["kind"], string> = {
-  earnings: "var(--accent-dim)",
+  earnings: "var(--accent-dim)", // upcoming earnings
+  "earnings-past": "var(--bg-elevated-2)", // already-reported earnings, muted
   "dividend-ex": "rgba(79, 184, 122, 0.4)", // ex-dividend date, darker
   "dividend-pay": "rgba(79, 184, 122, 0.16)", // payment date, lighter
 };
