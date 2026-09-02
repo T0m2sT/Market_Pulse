@@ -40,7 +40,15 @@ export default function News() {
   if (error) return <p style={{ color: "var(--negative)" }}>{error}</p>;
   if (!doc) return <p style={{ color: "var(--text-tertiary)" }}>Loading…</p>;
 
-  let lastWeek = "";
+  // First briefing of each week gets the "Week of …" header above it.
+  const weekHeaderFor = new Set<string>();
+  const seenWeeks = new Set<string>();
+  for (const b of filtered) {
+    if (!seenWeeks.has(b.weekStart)) {
+      seenWeeks.add(b.weekStart);
+      weekHeaderFor.add(`${b.ticker}:${b.weekStart}`);
+    }
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
@@ -93,8 +101,7 @@ export default function News() {
 
       {filtered.map((b) => {
         const isPositive = b.sentiment >= 0;
-        const showWeekHeader = b.weekStart !== lastWeek;
-        lastWeek = b.weekStart;
+        const showWeekHeader = weekHeaderFor.has(`${b.ticker}:${b.weekStart}`);
         return (
           <div key={`${b.ticker}:${b.weekStart}`}>
             {showWeekHeader && (

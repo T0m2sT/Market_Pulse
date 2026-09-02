@@ -7,8 +7,6 @@ import { Calendar, type CalendarEvent } from "../components/Calendar";
 import { Modal } from "../components/Modal";
 import { eur } from "../format";
 
-const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
-
 export default function Dividends() {
   const [doc, setDoc] = useState<DividendsDoc | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -29,16 +27,18 @@ export default function Dividends() {
     ];
   }, [doc]);
 
+  const next90Total = useMemo(() => {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() + 90);
+    const cutoffKey = cutoff.toISOString().slice(0, 10);
+    const todayKey = new Date().toISOString().slice(0, 10);
+    return (doc?.dividends ?? [])
+      .filter((d) => d.paymentDate >= todayKey && d.paymentDate <= cutoffKey)
+      .reduce((sum, d) => sum + d.amountEur, 0);
+  }, [doc]);
+
   if (error) return <p style={{ color: "var(--negative)" }}>{error}</p>;
   if (!doc) return <p style={{ color: "var(--text-tertiary)" }}>Loading…</p>;
-
-  const now = Date.now();
-  const next90Total = doc.dividends
-    .filter((d) => {
-      const pay = new Date(d.paymentDate + "T00:00:00").getTime();
-      return pay >= now && pay <= now + NINETY_DAYS_MS;
-    })
-    .reduce((sum, d) => sum + d.amountEur, 0);
 
   const touching = selectedDate
     ? doc.dividends.filter((d) => d.exDate === selectedDate || d.paymentDate === selectedDate)
