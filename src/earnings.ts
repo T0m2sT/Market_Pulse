@@ -165,7 +165,13 @@ export async function refreshEarningsCalendar(
 
   const from = new Date(Date.now() - CALENDAR_LOOKBACK_DAYS * 86400000).toISOString().slice(0, 10);
   const to = daysFromNow(CALENDAR_FUTURE_DAYS);
-  const calendar = await fetchEarningsCalendar(finnhubToken, from, to);
+  let calendar: Awaited<ReturnType<typeof fetchEarningsCalendar>> = [];
+  try {
+    calendar = await fetchEarningsCalendar(finnhubToken, from, to);
+  } catch {
+    // Finnhub calendar unavailable — keep existing calendar rows, still run history seeding + KAP.L.
+    calendar = [];
+  }
 
   const statements: [string, unknown[]][] = [];
   for (const e of calendar) {
@@ -232,7 +238,12 @@ export async function refreshEarningsCalendar(
   // KAP.L web-search fallback.
   for (const h of holdings) {
     if (!WEB_SEARCH_FALLBACK_TICKERS.has(h.ticker)) continue;
-    const doc = await lookupEarningsViaWebSearch(anthropicApiKey, h.ticker, h.name);
+    let doc: Awaited<ReturnType<typeof lookupEarningsViaWebSearch>> = null;
+    try {
+      doc = await lookupEarningsViaWebSearch(anthropicApiKey, h.ticker, h.name);
+    } catch {
+      doc = null;
+    }
     if (doc?.next) {
       await db.run(
         d1,
@@ -324,12 +335,17 @@ export async function pollEarningsResults(
     );
     if (!needsResultsPoll(entry, prior, now)) continue;
 
-    const result = await lookupEarningsResult(
-      anthropicApiKey,
-      entry.ticker,
-      nameByTicker.get(entry.ticker) ?? entry.ticker,
-      entry.date,
-    );
+    let result: Awaited<ReturnType<typeof lookupEarningsResult>> = null;
+    try {
+      result = await lookupEarningsResult(
+        anthropicApiKey,
+        entry.ticker,
+        nameByTicker.get(entry.ticker) ?? entry.ticker,
+        entry.date,
+      );
+    } catch {
+      result = null;
+    }
     if (!result) {
       // Write a stub so the 2h backoff applies.
       await db.run(

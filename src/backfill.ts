@@ -41,12 +41,12 @@ export async function runBackfill(
 
   let enriched = 0;
   for (const { ticker, date } of thin) {
-    const r = await lookupEarningsResult(
-      env.ANTHROPIC_API_KEY,
-      ticker,
-      nameByTicker.get(ticker) ?? ticker,
-      date,
-    );
+    let r: Awaited<ReturnType<typeof lookupEarningsResult>> = null;
+    try {
+      r = await lookupEarningsResult(env.ANTHROPIC_API_KEY, ticker, nameByTicker.get(ticker) ?? ticker, date);
+    } catch {
+      r = null;
+    }
     if (!r) {
       await db.run(
         d1,

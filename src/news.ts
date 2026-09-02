@@ -230,18 +230,23 @@ export async function refreshBriefings(
     );
     if (articles.length === 0) continue;
 
-    const briefing = await generateBriefing(
-      anthropicKey,
-      ticker,
-      nameByTicker.get(ticker) ?? ticker,
-      `${weekStart} to ${weekEnd}`,
-      articles.map((a) => ({
-        title: a.title,
-        description: a.description,
-        source: a.source,
-        sentiment: a.sentiment,
-      })),
-    );
+    let briefing: BriefingResult | null = null;
+    try {
+      briefing = await generateBriefing(
+        anthropicKey,
+        ticker,
+        nameByTicker.get(ticker) ?? ticker,
+        `${weekStart} to ${weekEnd}`,
+        articles.map((a) => ({
+          title: a.title,
+          description: a.description,
+          source: a.source,
+          sentiment: a.sentiment,
+        })),
+      );
+    } catch {
+      briefing = null; // one ticker's Claude call failing shouldn't drop the rest of the batch
+    }
     if (!briefing) continue;
 
     await db.run(
