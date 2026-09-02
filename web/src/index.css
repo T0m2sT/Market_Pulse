@@ -120,3 +120,9 @@ a {
 .negative {
   color: var(--negative);
 }
+
+/* Dividend payment-date amount: the money has actually landed, so it glows. */
+.glow-positive {
+  color: var(--positive);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--positive) 70%, transparent);
+}
