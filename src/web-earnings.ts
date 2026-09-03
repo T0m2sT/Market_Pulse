@@ -122,8 +122,8 @@ export interface EarningsResultLookup {
   period: string;
 }
 
-const RESULT_SYSTEM_PROMPT = `You research a company's just-released quarterly earnings using web search.
-Given a company name, ticker, and the date it reported, find the results announced on or immediately after that date.
+const RESULT_SYSTEM_PROMPT = `You research a company's quarterly earnings using web search.
+You are given a company and an APPROXIMATE date. Find that company's most recent quarterly earnings report announced within roughly 6 weeks of that date (the date may be the fiscal quarter-end rather than the announcement day). Report the figures from that specific quarter's release.
 Respond with ONLY JSON, no prose:
 {"period": string, "revenue": number|null, "revenueEstimate": number|null, "revenueYoyPct": number|null,
  "eps": number|null, "epsEstimate": number|null, "epsYoyPct": number|null,
@@ -155,7 +155,7 @@ export async function lookupEarningsResult(
       max_tokens: 1500,
       system: RESULT_SYSTEM_PROMPT,
       messages: [
-        { role: "user", content: `Company: ${companyName} (${ticker}). Reported earnings on: ${date}.` },
+        { role: "user", content: `Company: ${companyName} (${ticker}). Approximate report date: ${date}.` },
       ],
       tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }],
     }),

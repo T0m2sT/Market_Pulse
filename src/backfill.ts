@@ -41,19 +41,37 @@ export async function runBackfill(
   // bumps checked_at to now, so a row Claude can't resolve is retried at most once per hour —
   // the runbook loop, running back-to-back, sees it once then it drops out and the loop ends.
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-  const thin = await db.all<{ ticker: string; date: string }>(
+  // The row date is the fiscal-quarter-end (e.g. 2026-06-30); the company actually REPORTED weeks
+  // later. Join to earnings_calendar to get the announcement date within 70 days after the row
+  // date and ask Claude about THAT — searching "earnings on 2026-06-30" finds nothing.
+  const thin = await db.all<{ ticker: string; date: string; announced: string | null }>(
     d1,
-    `SELECT ticker, date FROM earnings_results
-      WHERE revenue IS NULL AND checked_at < ?
-      ORDER BY date DESC LIMIT 15`,
+    `SELECT er.ticker, er.date,
+            (SELECT ec.date FROM earnings_calendar ec
+              WHERE ec.ticker = er.ticker
+                AND ec.date >= er.date
+                AND ec.date <= date(er.date, '+70 days')
+              ORDER BY ec.date ASC LIMIT 1) AS announced
+       FROM earnings_results er
+      WHERE er.revenue IS NULL AND er.checked_at < ?
+      ORDER BY er.date DESC LIMIT 15`,
     oneHourAgo,
   );
 
   let enriched = 0;
-  for (const { ticker, date } of thin) {
+  for (const { ticker, date, announced } of thin) {
+    // No calendar row for old quarters (pruned) — approximate the report date as quarter-end + 30d.
+    const askDate =
+      announced ??
+      new Date(new Date(date + "T00:00:00Z").getTime() + 30 * 86400000).toISOString().slice(0, 10);
     let r: Awaited<ReturnType<typeof lookupEarningsResult>> = null;
     try {
-      r = await lookupEarningsResult(env.ANTHROPIC_API_KEY, ticker, nameByTicker.get(ticker) ?? ticker, date);
+      r = await lookupEarningsResult(
+        env.ANTHROPIC_API_KEY,
+        ticker,
+        nameByTicker.get(ticker) ?? ticker,
+        askDate,
+      );
     } catch {
       r = null;
     }
