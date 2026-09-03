@@ -68,12 +68,12 @@ export function periodLabel(date: string): string {
 
 export function needsResultsPoll(
   entry: { date: string; hour: string },
-  priorResult: { beat: number | null; checked_at: string } | null,
+  priorResult: { revenue: number | null; checked_at: string } | null,
   now: Date,
 ): boolean {
   if (now.getTime() < new Date(resultsAvailableAt(entry.date, entry.hour)).getTime()) return false;
   if (!priorResult) return true;
-  if (priorResult.beat !== null) return false; // complete
+  if (priorResult.revenue !== null) return false; // complete — the poll adds revenue/guidance/YoY
   const twoHours = 2 * 60 * 60 * 1000;
   return now.getTime() - new Date(priorResult.checked_at).getTime() >= twoHours;
 }
@@ -353,8 +353,9 @@ export async function pollEarningsResults(
   const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
   // Include yesterday so an AMC report (actuals ~20:40 UTC) whose poll window ran out the same
   // evening still gets picked up the next morning until it has a complete result row.
-  // A calendar entry is "due" if there's no COMPLETE result row (beat set) for its quarter yet —
-  // matched by ticker + a result date within the 70 days before the announcement date.
+  // A calendar entry is "due" if no result row with REVENUE exists for its quarter yet (the poll's
+  // job is to add revenue / guidance / YoY on top of the EPS-only Finnhub seed) — matched by
+  // ticker + a result date within the 70 days before the announcement date.
   const due = await db.all<{ ticker: string; date: string; hour: string }>(
     d1,
     `SELECT ec.ticker, ec.date, ec.hour
@@ -363,7 +364,7 @@ export async function pollEarningsResults(
         AND NOT EXISTS (
           SELECT 1 FROM earnings_results er
            WHERE er.ticker = ec.ticker
-             AND er.beat IS NOT NULL
+             AND er.revenue IS NOT NULL
              AND er.date <= ec.date
              AND er.date >= date(ec.date, '-70 days')
         )`,
@@ -390,9 +391,9 @@ export async function pollEarningsResults(
     );
     const entry = { ticker: cal.ticker, date: seed?.date ?? cal.date, hour: cal.hour };
 
-    const prior = await db.first<{ beat: number | null; checked_at: string }>(
+    const prior = await db.first<{ revenue: number | null; checked_at: string }>(
       d1,
-      `SELECT beat, checked_at FROM earnings_results WHERE ticker = ? AND date = ?`,
+      `SELECT revenue, checked_at FROM earnings_results WHERE ticker = ? AND date = ?`,
       entry.ticker,
       entry.date,
     );

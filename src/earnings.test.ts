@@ -18,20 +18,20 @@ describe("needsResultsPoll", () => {
   it("true when no result row and the report time has passed", () => {
     expect(needsResultsPoll({ date: "2026-08-28", hour: "amc" }, null, now)).toBe(true);
   });
-  it("false when a complete result row exists", () => {
+  it("false when a complete result row exists (revenue set)", () => {
     expect(
       needsResultsPoll(
         { date: "2026-08-28", hour: "amc" },
-        { beat: 1, checked_at: "2026-08-28T20:50:00Z" },
+        { revenue: 96_200_000_000, checked_at: "2026-08-28T20:50:00Z" },
         now,
       ),
     ).toBe(false);
   });
-  it("true when a stub row exists (beat null) and last check was >2h ago", () => {
+  it("true when an EPS-only seed row exists (no revenue) and last check was >2h ago", () => {
     expect(
       needsResultsPoll(
         { date: "2026-08-28", hour: "bmo" },
-        { beat: null, checked_at: "2026-08-28T14:00:00Z" },
+        { revenue: null, checked_at: "2026-08-28T14:00:00Z" },
         now,
       ),
     ).toBe(true);
