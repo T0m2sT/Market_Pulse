@@ -60,17 +60,26 @@ export async function runBackfill(
 
   let enriched = 0;
   for (const { ticker, date, announced } of thin) {
-    // No calendar row for old quarters (pruned) — approximate the report date as quarter-end + 30d.
-    const askDate =
-      announced ??
-      new Date(new Date(date + "T00:00:00Z").getTime() + 30 * 86400000).toISOString().slice(0, 10);
+    // Only enrich when we have the real announcement date from the calendar. Guessing the report
+    // date for an old, pruned quarter makes Claude return the wrong (usually latest) quarter's
+    // numbers — better to leave old rows EPS-only than to fill them with a mismatched quarter.
+    if (!announced) {
+      await db.run(
+        d1,
+        `UPDATE earnings_results SET checked_at = ? WHERE ticker = ? AND date = ?`,
+        new Date().toISOString(),
+        ticker,
+        date,
+      );
+      continue;
+    }
     let r: Awaited<ReturnType<typeof lookupEarningsResult>> = null;
     try {
       r = await lookupEarningsResult(
         env.ANTHROPIC_API_KEY,
         ticker,
         nameByTicker.get(ticker) ?? ticker,
-        askDate,
+        announced,
       );
     } catch {
       r = null;

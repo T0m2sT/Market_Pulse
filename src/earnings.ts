@@ -6,6 +6,10 @@ import { lookupEarningsViaWebSearch, lookupEarningsResult } from "./web-earnings
 const CALENDAR_LOOKBACK_DAYS = 400;
 const CALENDAR_FUTURE_DAYS = 30;
 const KEEP_PAST_PER_TICKER = 4;
+// Keep more past CALENDAR rows than result rows: the backfill/enrichment needs each result
+// quarter's announcement date, and a result row's date (fiscal-end) sits ~1 quarter before its
+// calendar row, so 4 result quarters can span ~6 calendar entries.
+const KEEP_PAST_CALENDAR = 8;
 const WEB_SEARCH_FALLBACK_TICKERS = new Set(["KAP.L"]);
 /** checked_at for EPS-only seed rows — marks "never enriched by lookupEarningsResult", so the
  *  backfill's "checked_at older than an hour" filter always picks them up on its first pass. */
@@ -95,9 +99,19 @@ export async function getEarnings(d1: D1Database, holdings: Holding[]): Promise<
     is_estimate: number;
   }>(d1, `SELECT * FROM earnings_calendar ORDER BY date ASC`);
 
-  const calendar: CalendarRowEntry[] = calRows.map((r) => {
+  // The table keeps up to 8 past calendar rows per ticker (the enrichment join needs old
+  // announcement dates), but the UI only wants the 4 most recent past + all upcoming.
+  const pastCountByTicker = new Map<string, number>();
+  const calendar: CalendarRowEntry[] = [];
+  for (const r of [...calRows].reverse()) {
+    // reversed = newest first
+    if (r.date < t) {
+      const n = (pastCountByTicker.get(r.ticker) ?? 0) + 1;
+      pastCountByTicker.set(r.ticker, n);
+      if (n > KEEP_PAST_PER_TICKER) continue;
+    }
     const h = byTicker.get(r.ticker);
-    return {
+    calendar.push({
       ticker: r.ticker,
       name: h?.name ?? r.ticker,
       logo: h?.logo,
@@ -109,8 +123,9 @@ export async function getEarnings(d1: D1Database, holdings: Holding[]): Promise<
       revenueEstimate: r.revenue_estimate,
       isEstimate: r.is_estimate === 1,
       isPast: r.date < t,
-    };
-  });
+    });
+  }
+  calendar.reverse(); // back to chronological
 
   const resRows = await db.all<{
     ticker: string;
@@ -313,12 +328,12 @@ async function retainCalendar(d1: D1Database): Promise<void> {
       ticker,
       t,
     );
-    if (past.length > KEEP_PAST_PER_TICKER) {
+    if (past.length > KEEP_PAST_CALENDAR) {
       await db.run(
         d1,
         `DELETE FROM earnings_calendar WHERE ticker = ? AND date <= ?`,
         ticker,
-        past[KEEP_PAST_PER_TICKER].date,
+        past[KEEP_PAST_CALENDAR].date,
       );
     }
   }
