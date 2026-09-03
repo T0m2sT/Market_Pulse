@@ -25,7 +25,9 @@ export interface CalendarRowEntry {
 
 export interface EarningsResult {
   ticker: string;
+  /** The report/announcement date (aligns with the calendar dot). */
   date: string;
+  /** Fiscal-period label, e.g. "Q2 FY2027". */
   period: string;
   eps: number | null;
   epsEstimate: number | null;
@@ -49,11 +51,22 @@ function daysFromNow(n: number): string {
   return new Date(Date.now() + n * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
-/** Calendar-quarter label from a date. */
+/** Calendar-quarter label from a date (fallback when fiscal quarter/year unknown). */
 export function periodLabel(date: string): string {
   const [y, m] = date.split("-").map(Number);
   if (!y || !m) return date;
   return `Q${Math.ceil(m / 3)} ${y}`;
+}
+
+/**
+ * Label a quarter using the company's OWN fiscal quarter+year when Finnhub provides them, else
+ * fall back to the calendar quarter of the date. Companies with offset fiscal years (NVDA, MSFT,
+ * AVGO, TJX, ...) report e.g. "Q2 FY2027" in mid-2026 — labelling that by calendar quarter
+ * ("Q3 2026") is confusing and made the just-reported quarter look like the wrong one.
+ */
+export function fiscalLabel(quarter: number, year: number, periodDate: string): string {
+  if (quarter >= 1 && quarter <= 4 && year > 2000) return `Q${quarter} FY${year}`;
+  return periodLabel(periodDate);
 }
 
 // ---- Reads ----
@@ -93,22 +106,28 @@ export async function getEarnings(d1: D1Database, holdings: Holding[]): Promise<
   const resRows = await db.all<{
     ticker: string;
     date: string;
-    period: string;
+    fiscal_quarter: number | null;
+    fiscal_year: number | null;
+    announced_date: string | null;
     eps: number | null;
     eps_estimate: number | null;
     surprise_pct: number | null;
     revenue: number | null;
     revenue_estimate: number | null;
     beat: number | null;
-  }>(d1, `SELECT ticker, date, period, eps, eps_estimate, surprise_pct, revenue, revenue_estimate, beat
-            FROM earnings_results ORDER BY date DESC`);
+  }>(
+    d1,
+    `SELECT ticker, date, fiscal_quarter, fiscal_year, announced_date,
+            eps, eps_estimate, surprise_pct, revenue, revenue_estimate, beat
+       FROM earnings_results ORDER BY date DESC`,
+  );
 
   const results: Record<string, EarningsResult[]> = {};
   for (const r of resRows) {
     (results[r.ticker] ??= []).push({
       ticker: r.ticker,
-      date: r.date,
-      period: periodLabel(r.date),
+      date: r.announced_date ?? r.date,
+      period: fiscalLabel(r.fiscal_quarter ?? 0, r.fiscal_year ?? 0, r.date),
       eps: r.eps,
       epsEstimate: r.eps_estimate,
       surprisePct: r.surprise_pct,
@@ -117,7 +136,10 @@ export async function getEarnings(d1: D1Database, holdings: Holding[]): Promise<
       beat: r.beat,
     });
   }
-  for (const k of Object.keys(results)) results[k] = results[k].slice(0, KEEP_RESULTS_PER_TICKER);
+  for (const k of Object.keys(results)) {
+    results[k].sort((a, b) => b.date.localeCompare(a.date));
+    results[k] = results[k].slice(0, KEEP_RESULTS_PER_TICKER);
+  }
 
   return { updatedAt: new Date().toISOString(), calendar, results };
 }
@@ -126,6 +148,8 @@ export async function getEarnings(d1: D1Database, holdings: Holding[]): Promise<
 
 interface FinnhubHistoryRow {
   period?: string;
+  quarter?: number;
+  year?: number;
   actual: number | null;
   estimate: number | null;
   surprisePercent: number | null;
@@ -168,9 +192,12 @@ export async function refreshEarnings(
   }
   await db.batch(d1, calStatements);
 
-  // --- Results: Finnhub /stock/earnings gives 4 clean quarters of EPS actual vs estimate ---
-  const recentFrom = new Date(Date.now() - 200 * 86400000).toISOString().slice(0, 10);
-  const recentTo = daysFromNow(5);
+  // --- Results: Finnhub /stock/earnings gives ~4 clean quarters of EPS actual vs estimate.
+  //     `period` is the fiscal quarter-END date and CAN be in the future for a quarter that was
+  //     just reported (a company reports Q2 in the middle of Q3). Keep any row that has an
+  //     `actual` — don't filter on date. ---
+  const revFrom = new Date(Date.now() - 400 * 86400000).toISOString().slice(0, 10);
+  const revTo = today();
 
   for (const [lookup, h] of lookupToHolding) {
     let history: FinnhubHistoryRow[] = [];
@@ -179,52 +206,62 @@ export async function refreshEarnings(
     } catch {
       history = [];
     }
-    const past = history
-      .filter((r) => r.period && /^\d{4}-\d{2}-\d{2}$/.test(r.period) && r.period! < today())
+    const reported = history
+      .filter((r) => r.period && /^\d{4}-\d{2}-\d{2}$/.test(r.period) && r.actual != null)
       .slice(0, KEEP_RESULTS_PER_TICKER);
-    if (past.length === 0) continue;
+    if (reported.length === 0) continue;
 
-    // Revenue for the most recent reported quarter, from calendar/earnings?symbol=
-    let revByDate = new Map<string, { revenue: number | null; revenueEstimate: number | null }>();
+    // calendar/earnings?symbol= carries the real announcement date + revenueActual, keyed by
+    // fiscal quarter/year — join on that so the row's date aligns with its calendar dot and the
+    // revenue lands on the right quarter.
+    let byFiscal = new Map<
+      string,
+      { announced: string; revenue: number | null; revenueEstimate: number | null }
+    >();
     try {
-      const withRev = await fetchRecentEarningsWithRevenue(finnhubToken, lookup, recentFrom, recentTo);
-      revByDate = new Map(
-        withRev
-          .filter((e) => e.revenueActual != null)
-          .map((e) => [
-            // calendar/earnings date is the announcement date; map it to the nearest history
-            // period (fiscal quarter-end) so the revenue lands on the right quarter row.
-            nearestPeriod(e.date, past.map((p) => p.period!)),
-            { revenue: e.revenueActual, revenueEstimate: e.revenueEstimate },
-          ]),
+      const cal = await fetchRecentEarningsWithRevenue(finnhubToken, lookup, revFrom, revTo);
+      byFiscal = new Map(
+        cal.map((e) => [
+          `${e.quarter}-${e.year}`,
+          { announced: e.date, revenue: e.revenueActual, revenueEstimate: e.revenueEstimate },
+        ]),
       );
     } catch {
-      revByDate = new Map();
+      byFiscal = new Map();
     }
 
-    for (const r of past) {
-      const date = r.period!;
-      const rev = revByDate.get(date);
+    for (const r of reported) {
+      const periodDate = r.period!;
+      const fq = r.quarter ?? 0;
+      const fy = r.year ?? 0;
+      const cal = byFiscal.get(`${fq}-${fy}`);
+      const announced = cal?.announced ?? periodDate;
       const beat = r.actual != null && r.estimate != null ? (r.actual >= r.estimate ? 1 : 0) : null;
       await db.run(
         d1,
         `INSERT INTO earnings_results
-           (ticker, date, period, eps, eps_estimate, surprise_pct, revenue, revenue_estimate, beat, checked_at,
+           (ticker, date, period, fiscal_quarter, fiscal_year, announced_date,
+            eps, eps_estimate, surprise_pct, revenue, revenue_estimate, beat, checked_at,
             revenue_yoy_pct, eps_yoy_pct, guidance_text, highlights_text)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, '', '')
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, '', '')
          ON CONFLICT (ticker, date) DO UPDATE SET
+           period = excluded.period, fiscal_quarter = excluded.fiscal_quarter,
+           fiscal_year = excluded.fiscal_year, announced_date = excluded.announced_date,
            eps = excluded.eps, eps_estimate = excluded.eps_estimate, surprise_pct = excluded.surprise_pct,
            revenue = COALESCE(excluded.revenue, earnings_results.revenue),
            revenue_estimate = COALESCE(excluded.revenue_estimate, earnings_results.revenue_estimate),
            beat = excluded.beat, checked_at = excluded.checked_at`,
         h.ticker,
-        date,
-        periodLabel(date),
+        periodDate,
+        fiscalLabel(fq, fy, periodDate),
+        fq || null,
+        fy || null,
+        announced,
         r.actual,
         r.estimate,
         r.surprisePercent,
-        rev?.revenue ?? null,
-        rev?.revenueEstimate ?? null,
+        cal?.revenue ?? null,
+        cal?.revenueEstimate ?? null,
         beat,
         new Date().toISOString(),
       );
@@ -283,35 +320,43 @@ export async function refreshEarnings(
   await retain(d1);
 }
 
-/** Nearest period-end date (from `periods`) to an announcement date. */
-function nearestPeriod(announced: string, periods: string[]): string {
-  const a = new Date(announced + "T00:00:00Z").getTime();
-  let best = periods[0] ?? announced;
-  let bestGap = Infinity;
-  for (const p of periods) {
-    const gap = Math.abs(new Date(p + "T00:00:00Z").getTime() - a);
-    if (gap < bestGap) {
-      bestGap = gap;
-      best = p;
-    }
-  }
-  return best;
-}
-
 async function retain(d1: D1Database): Promise<void> {
   const t = today();
-  for (const table of ["earnings_calendar", "earnings_results"] as const) {
-    const keep = table === "earnings_calendar" ? KEEP_PAST_PER_TICKER : KEEP_RESULTS_PER_TICKER;
-    const tickers = await db.all<{ ticker: string }>(d1, `SELECT DISTINCT ticker FROM ${table}`);
-    for (const { ticker } of tickers) {
-      const past = await db.all<{ date: string }>(
+
+  // Calendar: keep the 4 most recent PAST dots + all upcoming.
+  const calTickers = await db.all<{ ticker: string }>(d1, `SELECT DISTINCT ticker FROM earnings_calendar`);
+  for (const { ticker } of calTickers) {
+    const past = await db.all<{ date: string }>(
+      d1,
+      `SELECT date FROM earnings_calendar WHERE ticker = ? AND date < ? ORDER BY date DESC`,
+      ticker,
+      t,
+    );
+    if (past.length > KEEP_PAST_PER_TICKER) {
+      await db.run(
         d1,
-        `SELECT date FROM ${table} WHERE ticker = ? AND date < ? ORDER BY date DESC`,
+        `DELETE FROM earnings_calendar WHERE ticker = ? AND date <= ?`,
         ticker,
-        t,
+        past[KEEP_PAST_PER_TICKER].date,
       );
-      if (past.length > keep) {
-        await db.run(d1, `DELETE FROM ${table} WHERE ticker = ? AND date <= ?`, ticker, past[keep].date);
+    }
+  }
+
+  // Results: keep the 4 most recent reported quarters, ranked by announced_date (falls back to
+  // the fiscal-end `date`). Never filter on date < today — a just-reported quarter's fiscal-end
+  // date is still in the future.
+  const resTickers = await db.all<{ ticker: string }>(d1, `SELECT DISTINCT ticker FROM earnings_results`);
+  for (const { ticker } of resTickers) {
+    const rows = await db.all<{ date: string }>(
+      d1,
+      `SELECT date FROM earnings_results WHERE ticker = ?
+        ORDER BY COALESCE(announced_date, date) DESC`,
+      ticker,
+    );
+    if (rows.length > KEEP_RESULTS_PER_TICKER) {
+      const drop = rows.slice(KEEP_RESULTS_PER_TICKER).map((r) => r.date);
+      for (const d of drop) {
+        await db.run(d1, `DELETE FROM earnings_results WHERE ticker = ? AND date = ?`, ticker, d);
       }
     }
   }

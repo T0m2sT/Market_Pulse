@@ -165,7 +165,7 @@ export default function Earnings() {
                       <p style={{ fontSize: 15, fontWeight: 500 }}>{e.name}</p>
                       <p className="num" style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
                         {weight !== undefined && <>{(weight * 100).toFixed(1)}% · </>}
-                        {e.quarter > 0 ? `Q${e.quarter} ${e.year}` : e.year}
+                        {e.quarter > 0 ? `Q${e.quarter} FY${e.year}` : e.year}
                         {e.isEstimate && " (est.)"}
                       </p>
                     </div>

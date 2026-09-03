@@ -145,6 +145,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
     }
 
 
+
     if (url.pathname === "/api/admin/briefings" && request.method === "POST") {
       const holdings = await getHoldings(env.PORTFOLIO_KV);
       await refreshBriefings(env.DB, env.ANTHROPIC_API_KEY, holdings.positions);

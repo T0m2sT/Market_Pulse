@@ -12,7 +12,10 @@ export interface EarningsCalendarEntry {
 
 export interface EarningsResult {
   symbol: string;
+  /** Fiscal quarter-end date, YYYY-MM-DD — can be in the FUTURE for a quarter just reported
+   *  (a company reports Q2 in mid-Q3, but Finnhub dates it by the quarter end). */
   period: string;
+  /** Finnhub's fiscal quarter number (1-4) and fiscal year — NOT calendar. */
   quarter: number;
   year: number;
   estimate: number | null;

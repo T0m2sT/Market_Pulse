@@ -175,7 +175,7 @@ export default function Today() {
                         }}
                       >
                         {weight !== undefined && <>{(weight * 100).toFixed(1)}% · </>}
-                        {e.isPast ? "Reported" : "Earnings"} · {e.quarter > 0 ? `Q${e.quarter} ${e.year}` : e.year}
+                        {e.isPast ? "Reported" : "Earnings"} · {e.quarter > 0 ? `Q${e.quarter} FY${e.year}` : e.year}
                       </p>
                     </div>
                   </div>
