@@ -40,6 +40,28 @@ export async function fetchEarningsCalendar(
   return data.earningsCalendar ?? [];
 }
 
+/**
+ * `calendar/earnings?symbol=` (free tier) returns a small number of the ticker's most recent
+ * entries WITH revenueActual / revenueEstimate / epsActual — the fields `stock/earnings` lacks.
+ * Used to attach revenue to the latest reported quarter.
+ */
+export async function fetchRecentEarningsWithRevenue(
+  token: string,
+  ticker: string,
+  from: string,
+  to: string,
+): Promise<EarningsCalendarEntry[]> {
+  try {
+    const data = (await finnhubGet(
+      `/calendar/earnings?from=${from}&to=${to}&symbol=${ticker}`,
+      token,
+    )) as { earningsCalendar?: EarningsCalendarEntry[] };
+    return data.earningsCalendar ?? [];
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchEarningsHistory(token: string, ticker: string): Promise<EarningsResult[]> {
   try {
     const data = (await finnhubGet(`/stock/earnings?symbol=${ticker}`, token)) as unknown;

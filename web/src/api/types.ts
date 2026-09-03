@@ -97,14 +97,12 @@ export interface EarningsResult {
   ticker: string;
   date: string;
   period: string;
-  revenue: number | null;
-  revenueEstimate: number | null;
-  revenueYoyPct: number | null;
   eps: number | null;
   epsEstimate: number | null;
-  epsYoyPct: number | null;
-  guidanceText: string;
-  highlightsText: string;
+  surprisePct: number | null;
+  /** Revenue is only available for the most recently reported quarter (Finnhub free tier). */
+  revenue: number | null;
+  revenueEstimate: number | null;
   beat: number | null;
 }
 

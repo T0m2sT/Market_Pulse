@@ -10,10 +10,6 @@ import { usd, abbreviateUsd } from "../format";
 type SortMode = "name" | "weight";
 const SORT_LABELS: Record<SortMode, string> = { name: "Name", weight: "Weight" };
 
-function pct(v: number | null): string {
-  if (v === null) return "—";
-  return `${v >= 0 ? "+" : ""}${v.toFixed(0)}%`;
-}
 
 function ResultRow({
   label,
@@ -53,17 +49,11 @@ function ResultRow({
 }
 
 function ResultBody({ r }: { r: EarningsResult }) {
-  const revBeat = r.revenue !== null && r.revenueEstimate !== null && r.revenue >= r.revenueEstimate;
   const epsBeat = r.eps !== null && r.epsEstimate !== null && r.eps >= r.epsEstimate;
+  const revBeat = r.revenue !== null && r.revenueEstimate !== null && r.revenue >= r.revenueEstimate;
+  const hasRevenue = r.revenue !== null;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
-      <ResultRow
-        label="Revenue"
-        value={r.revenue !== null ? abbreviateUsd(r.revenue) : "—"}
-        est={r.revenueEstimate !== null ? abbreviateUsd(r.revenueEstimate) : null}
-        good={revBeat}
-        hasCompare={r.revenue !== null && r.revenueEstimate !== null}
-      />
       <ResultRow
         label="EPS"
         value={r.eps !== null ? usd(r.eps) : "—"}
@@ -71,11 +61,30 @@ function ResultBody({ r }: { r: EarningsResult }) {
         good={epsBeat}
         hasCompare={r.eps !== null && r.epsEstimate !== null}
       />
-      {r.guidanceText && (
-        <div>
-          <p style={{ fontSize: 11, color: "var(--text-tertiary)" }}>Guidance</p>
-          <p style={{ fontSize: 14 }}>{r.guidanceText}</p>
+      {r.surprisePct !== null && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+          <span style={{ fontSize: 13, color: "var(--text-tertiary)" }}>Surprise</span>
+          <span
+            className={`num ${r.surprisePct >= 0 ? "positive" : "negative"}`}
+            style={{ fontSize: 15, fontWeight: 600 }}
+          >
+            {r.surprisePct >= 0 ? "▲" : "▼"} {Math.abs(r.surprisePct).toFixed(1)}%
+          </span>
         </div>
+      )}
+      {hasRevenue && (
+        <ResultRow
+          label="Revenue"
+          value={abbreviateUsd(r.revenue!)}
+          est={r.revenueEstimate !== null ? abbreviateUsd(r.revenueEstimate) : null}
+          good={revBeat}
+          hasCompare={r.revenueEstimate !== null}
+        />
+      )}
+      {!hasRevenue && (
+        <p style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
+          Revenue detail is only available for the latest reported quarter.
+        </p>
       )}
     </div>
   );
@@ -265,14 +274,26 @@ export default function Earnings() {
                       width: "100%",
                     }}
                   >
-                    <p style={{ fontSize: 12, color: "var(--text-secondary)" }}>{r.period}</p>
-                    <div style={{ display: "flex", gap: "var(--space-3)", marginTop: 2 }}>
-                      <span className="num" style={{ fontSize: 12 }}>
-                        Rev {pct(r.revenueYoyPct)} YoY
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                      <p style={{ fontSize: 12, color: "var(--text-secondary)" }}>{r.period}</p>
+                      {r.surprisePct !== null && (
+                        <span
+                          className={`num ${r.surprisePct >= 0 ? "positive" : "negative"}`}
+                          style={{ fontSize: 11, fontWeight: 600 }}
+                        >
+                          {r.surprisePct >= 0 ? "▲" : "▼"} {Math.abs(r.surprisePct).toFixed(1)}%
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ display: "flex", gap: "var(--space-2)", marginTop: 2 }}>
+                      <span className="num" style={{ fontSize: 13 }}>
+                        {r.eps !== null ? usd(r.eps) : "—"}
                       </span>
-                      <span className="num" style={{ fontSize: 12 }}>
-                        EPS {pct(r.epsYoyPct)} YoY
-                      </span>
+                      {r.epsEstimate !== null && (
+                        <span className="num" style={{ fontSize: 11, color: "var(--text-tertiary)" }}>
+                          est. {usd(r.epsEstimate)}
+                        </span>
+                      )}
                     </div>
                   </button>
                 ))}

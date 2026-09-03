@@ -8,7 +8,7 @@ import {
   isValidHoldingsInput,
   normaliseInputWeights,
 } from "./holdings";
-import { getEarnings, refreshEarningsCalendar, pollEarningsResults } from "./earnings";
+import { getEarnings, refreshEarnings } from "./earnings";
 import { getReturns, refreshReturns } from "./returns";
 import { getBriefings, refreshNews, refreshArticles, refreshBriefings, markBriefingSeen } from "./news";
 import { getDividends, refreshDividends } from "./dividends";
@@ -78,8 +78,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
 
     if (url.pathname === "/api/earnings/refresh" && request.method === "POST") {
       const holdings = await getHoldings(env.PORTFOLIO_KV);
-      await refreshEarningsCalendar(env.DB, env.FINNHUB_API_KEY, holdings.positions, env.ANTHROPIC_API_KEY);
-      await pollEarningsResults(env.DB, env.ANTHROPIC_API_KEY, holdings.positions);
+      await refreshEarnings(env.DB, env.FINNHUB_API_KEY, holdings.positions, env.ANTHROPIC_API_KEY);
       return Response.json({ status: "ok" });
     }
 
@@ -145,6 +144,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
       return Response.json({ status: "ok", ...result });
     }
 
+
     if (url.pathname === "/api/admin/briefings" && request.method === "POST") {
       const holdings = await getHoldings(env.PORTFOLIO_KV);
       await refreshBriefings(env.DB, env.ANTHROPIC_API_KEY, holdings.positions);
@@ -175,11 +175,9 @@ export default {
     //                             (both fetch live T212 prices but do NOT write the holdings doc —
     //                             holdings only change on a manual sync — so each tick is 1 KV write)
     //  "0 6,13,20 * * *"          news article ingest to D1, 3x/day (~25 Marketaux calls/cycle)
-    //  "*/10 11-23 * * 2-6"       earnings results poll — one indexed SELECT that returns early on
-    //                             any day none of the holdings reports; only calls Claude on report days
     if (event.cron === "5 6 * * *") {
       const holdings = await getHoldings(env.PORTFOLIO_KV);
-      await refreshEarningsCalendar(env.DB, env.FINNHUB_API_KEY, holdings.positions, env.ANTHROPIC_API_KEY);
+      await refreshEarnings(env.DB, env.FINNHUB_API_KEY, holdings.positions, env.ANTHROPIC_API_KEY);
       await refreshDividends(env.DB, env.EODHD_API_KEY, holdings.positions);
       await refreshBriefings(env.DB, env.ANTHROPIC_API_KEY, holdings.positions);
       return;
@@ -188,12 +186,6 @@ export default {
     if (event.cron === "0 6,13,20 * * *") {
       const holdings = await getHoldings(env.PORTFOLIO_KV);
       await refreshArticles(env.DB, env.MARKETAUX_API_KEY, holdings.positions);
-      return;
-    }
-
-    if (event.cron === "*/10 11-23 * * 2-6") {
-      const holdings = await getHoldings(env.PORTFOLIO_KV);
-      await pollEarningsResults(env.DB, env.ANTHROPIC_API_KEY, holdings.positions);
       return;
     }
 
