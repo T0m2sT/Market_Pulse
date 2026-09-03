@@ -127,45 +127,55 @@ export async function getEarnings(d1: D1Database, holdings: Holding[]): Promise<
     beat: number | null;
   }>(d1, `SELECT * FROM earnings_results ORDER BY date DESC`);
 
-  // earnings_results can hold several rows for the SAME quarter under different date conventions
-  // (announcement date from the poll, fiscal-quarter-end from the Finnhub seed). Collapse to one
-  // row per (ticker, calendar quarter), keeping the most complete: revenue > eps-only > neither,
-  // tie-break on the newest date.
-  const completeness = (r: EarningsResult) => (r.revenue !== null ? 2 : r.eps !== null ? 1 : 0);
-  const byQuarter = new Map<string, EarningsResult>();
+  // earnings_results can hold several rows for the SAME report under different date conventions:
+  // the fiscal-quarter-end date (Finnhub seed, e.g. 2026-06-30) and the announcement date the
+  // poll used (e.g. 2026-08-26) — up to ~2 months apart. Collapse rows within 75 days of each
+  // other (per ticker) into one, keeping the most complete and labelling it by the EARLIER
+  // (fiscal-quarter-end) date so the calendar-quarter label is right.
+  const completeness = (r: { revenue: number | null; eps: number | null }) =>
+    r.revenue !== null ? 2 : r.eps !== null ? 1 : 0;
+  const DAY = 86400000;
+
+  const perTicker = new Map<string, typeof resRows>();
   for (const r of resRows) {
-    const row: EarningsResult = {
-      ticker: r.ticker,
-      date: r.date,
-      period: periodLabel(r.date), // always the calendar-quarter label — consistent across sources
-      revenue: r.revenue,
-      revenueEstimate: r.revenue_estimate,
-      revenueYoyPct: r.revenue_yoy_pct,
-      eps: r.eps,
-      epsEstimate: r.eps_estimate,
-      epsYoyPct: r.eps_yoy_pct,
-      guidanceText: r.guidance_text ?? "",
-      highlightsText: r.highlights_text ?? "",
-      beat: r.beat,
-    };
-    const key = `${r.ticker}|${row.period}`;
-    const existing = byQuarter.get(key);
-    if (
-      !existing ||
-      completeness(row) > completeness(existing) ||
-      (completeness(row) === completeness(existing) && row.date > existing.date)
-    ) {
-      byQuarter.set(key, row);
-    }
+    (perTicker.get(r.ticker) ?? perTicker.set(r.ticker, []).get(r.ticker)!).push(r);
   }
 
   const results: Record<string, EarningsResult[]> = {};
-  for (const row of byQuarter.values()) {
-    (results[row.ticker] ??= []).push(row);
-  }
-  for (const k of Object.keys(results)) {
-    results[k].sort((a, b) => b.date.localeCompare(a.date));
-    results[k] = results[k].slice(0, 4);
+  for (const [ticker, rows] of perTicker) {
+    rows.sort((a, b) => a.date.localeCompare(b.date)); // oldest first
+    const clusters: (typeof resRows)[] = [];
+    for (const r of rows) {
+      const last = clusters[clusters.length - 1];
+      const near =
+        last &&
+        new Date(r.date + "T00:00:00Z").getTime() -
+          new Date(last[last.length - 1].date + "T00:00:00Z").getTime() <
+          75 * DAY;
+      if (near) last.push(r);
+      else clusters.push([r]);
+    }
+
+    const merged: EarningsResult[] = clusters.map((cluster) => {
+      const best = cluster.reduce((a, b) => (completeness(b) >= completeness(a) ? b : a));
+      const labelDate = cluster[0].date; // earliest = fiscal-quarter-end
+      return {
+        ticker,
+        date: labelDate,
+        period: periodLabel(labelDate),
+        revenue: best.revenue,
+        revenueEstimate: best.revenue_estimate,
+        revenueYoyPct: best.revenue_yoy_pct,
+        eps: best.eps,
+        epsEstimate: best.eps_estimate,
+        epsYoyPct: best.eps_yoy_pct,
+        guidanceText: best.guidance_text ?? "",
+        highlightsText: best.highlights_text ?? "",
+        beat: best.beat,
+      };
+    });
+    merged.sort((a, b) => b.date.localeCompare(a.date));
+    results[ticker] = merged.slice(0, 4);
   }
 
   return { updatedAt: new Date().toISOString(), calendar, results };
