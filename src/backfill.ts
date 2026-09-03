@@ -1,64 +1,8 @@
 import { db } from "./db";
 import { refreshDividends } from "./dividends";
 import { refreshEarningsCalendar, periodLabel } from "./earnings";
-import { lookupEarningsResult, lookupEarningsViaWebSearch } from "./web-earnings";
+import { lookupEarningsResult } from "./web-earnings";
 import type { Holding } from "./holdings";
-
-const KEEP_PAST = 4;
-
-/** For tickers that have fewer than KEEP_PAST past result rows (Finnhub's free tier only returns
- *  ~3 past quarters), ask Claude for older quarters and insert them. One web_search call per
- *  under-filled ticker; capped per invocation. */
-async function fillMissingQuarters(
-  d1: D1Database,
-  anthropicKey: string,
-  nameByTicker: Map<string, string>,
-  limit: number,
-): Promise<number> {
-  const today = new Date().toISOString().slice(0, 10);
-  const counts = await db.all<{ ticker: string; n: number }>(
-    d1,
-    `SELECT ticker, COUNT(*) AS n FROM earnings_results WHERE date < ? GROUP BY ticker`,
-    today,
-  );
-  const short = counts.filter((c) => c.n < KEEP_PAST).slice(0, limit);
-  let added = 0;
-  for (const { ticker } of short) {
-    let doc: Awaited<ReturnType<typeof lookupEarningsViaWebSearch>> = null;
-    try {
-      doc = await lookupEarningsViaWebSearch(anthropicKey, ticker, nameByTicker.get(ticker) ?? ticker);
-    } catch {
-      doc = null;
-    }
-    for (const h of doc?.history ?? []) {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(h.date) || h.date >= today) continue;
-      const beat =
-        h.epsActual !== null && h.epsEstimate !== null ? (h.epsActual >= h.epsEstimate ? 1 : 0) : null;
-      const before = await db.first<{ n: number }>(
-        d1,
-        `SELECT COUNT(*) AS n FROM earnings_results WHERE ticker = ? AND date = ?`,
-        ticker,
-        h.date,
-      );
-      if ((before?.n ?? 0) > 0) continue;
-      await db.run(
-        d1,
-        `INSERT INTO earnings_results
-           (ticker, date, period, revenue, revenue_estimate, revenue_yoy_pct, eps, eps_estimate, eps_yoy_pct, guidance_text, highlights_text, beat, checked_at)
-         VALUES (?, ?, ?, NULL, NULL, NULL, ?, ?, NULL, '', '', ?, '1970-01-01T00:00:00.000Z')
-         ON CONFLICT (ticker, date) DO NOTHING`,
-        ticker,
-        h.date,
-        periodLabel(h.date),
-        h.epsActual,
-        h.epsEstimate,
-        beat,
-      );
-      added++;
-    }
-  }
-  return added;
-}
 
 /**
  * One-time, idempotent. Safe to re-run — every write is an upsert.
@@ -92,10 +36,6 @@ export async function runBackfill(
     const divCount0 = await db.first<{ n: number }>(d1, `SELECT COUNT(*) AS n FROM dividends`);
     return { dividends: divCount0?.n ?? 0, earningsResultsEnriched: 0, seeded: true };
   }
-
-  // One-time: fill older quarters for tickers Finnhub only gave ~3 of. Bounded to 5 tickers/call;
-  // the runbook loop drains this over a few calls, then it's a no-op (every ticker at KEEP_PAST).
-  const quartersAdded = await fillMissingQuarters(d1, env.ANTHROPIC_API_KEY, nameByTicker, 5);
 
   // Rows still lacking revenue AND not attempted in the last hour. Every attempt (found or not)
   // bumps checked_at to now, so a row Claude can't resolve is retried at most once per hour —
@@ -153,9 +93,5 @@ export async function runBackfill(
   }
 
   const divCount = await db.first<{ n: number }>(d1, `SELECT COUNT(*) AS n FROM dividends`);
-  return {
-    dividends: divCount?.n ?? 0,
-    earningsResultsEnriched: enriched + quartersAdded,
-    seeded: true,
-  };
+  return { dividends: divCount?.n ?? 0, earningsResultsEnriched: enriched, seeded: true };
 }

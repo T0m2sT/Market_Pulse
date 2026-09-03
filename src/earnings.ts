@@ -127,12 +127,17 @@ export async function getEarnings(d1: D1Database, holdings: Holding[]): Promise<
     beat: number | null;
   }>(d1, `SELECT * FROM earnings_results ORDER BY date DESC`);
 
-  const results: Record<string, EarningsResult[]> = {};
+  // earnings_results can hold several rows for the SAME quarter under different date conventions
+  // (announcement date from the poll, fiscal-quarter-end from the Finnhub seed). Collapse to one
+  // row per (ticker, calendar quarter), keeping the most complete: revenue > eps-only > neither,
+  // tie-break on the newest date.
+  const completeness = (r: EarningsResult) => (r.revenue !== null ? 2 : r.eps !== null ? 1 : 0);
+  const byQuarter = new Map<string, EarningsResult>();
   for (const r of resRows) {
-    (results[r.ticker] ??= []).push({
+    const row: EarningsResult = {
       ticker: r.ticker,
       date: r.date,
-      period: r.period,
+      period: periodLabel(r.date), // always the calendar-quarter label — consistent across sources
       revenue: r.revenue,
       revenueEstimate: r.revenue_estimate,
       revenueYoyPct: r.revenue_yoy_pct,
@@ -142,9 +147,26 @@ export async function getEarnings(d1: D1Database, holdings: Holding[]): Promise<
       guidanceText: r.guidance_text ?? "",
       highlightsText: r.highlights_text ?? "",
       beat: r.beat,
-    });
+    };
+    const key = `${r.ticker}|${row.period}`;
+    const existing = byQuarter.get(key);
+    if (
+      !existing ||
+      completeness(row) > completeness(existing) ||
+      (completeness(row) === completeness(existing) && row.date > existing.date)
+    ) {
+      byQuarter.set(key, row);
+    }
   }
-  for (const k of Object.keys(results)) results[k] = results[k].slice(0, 4);
+
+  const results: Record<string, EarningsResult[]> = {};
+  for (const row of byQuarter.values()) {
+    (results[row.ticker] ??= []).push(row);
+  }
+  for (const k of Object.keys(results)) {
+    results[k].sort((a, b) => b.date.localeCompare(a.date));
+    results[k] = results[k].slice(0, 4);
+  }
 
   return { updatedAt: new Date().toISOString(), calendar, results };
 }
