@@ -145,6 +145,13 @@ async function handle(request: Request, env: Env): Promise<Response> {
       return Response.json({ status: "ok", ...result });
     }
 
+    if (url.pathname === "/api/admin/briefings" && request.method === "POST") {
+      const holdings = await getHoldings(env.PORTFOLIO_KV);
+      await refreshBriefings(env.DB, env.ANTHROPIC_API_KEY, holdings.positions);
+      const doc = await getBriefings(env.DB);
+      return Response.json({ status: "ok", briefings: doc.briefings.length });
+    }
+
     return Response.json({ error: "not found" }, { status: 404 });
 }
 
