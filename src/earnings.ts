@@ -127,55 +127,39 @@ export async function getEarnings(d1: D1Database, holdings: Holding[]): Promise<
     beat: number | null;
   }>(d1, `SELECT * FROM earnings_results ORDER BY date DESC`);
 
-  // earnings_results can hold several rows for the SAME report under different date conventions:
-  // the fiscal-quarter-end date (Finnhub seed, e.g. 2026-06-30) and the announcement date the
-  // poll used (e.g. 2026-08-26) — up to ~2 months apart. Collapse rows within 75 days of each
-  // other (per ticker) into one, keeping the most complete and labelling it by the EARLIER
-  // (fiscal-quarter-end) date so the calendar-quarter label is right.
+  // The poll writes results onto the Finnhub-seeded (fiscal-quarter-end) row, so there's one row
+  // per report. Belt-and-braces: if a stray same-quarter duplicate ever slips in, keep the more
+  // complete one (revenue > eps-only > neither).
   const completeness = (r: { revenue: number | null; eps: number | null }) =>
     r.revenue !== null ? 2 : r.eps !== null ? 1 : 0;
-  const DAY = 86400000;
-
-  const perTicker = new Map<string, typeof resRows>();
+  const byQuarter = new Map<string, EarningsResult>();
   for (const r of resRows) {
-    (perTicker.get(r.ticker) ?? perTicker.set(r.ticker, []).get(r.ticker)!).push(r);
+    const row: EarningsResult = {
+      ticker: r.ticker,
+      date: r.date,
+      period: periodLabel(r.date),
+      revenue: r.revenue,
+      revenueEstimate: r.revenue_estimate,
+      revenueYoyPct: r.revenue_yoy_pct,
+      eps: r.eps,
+      epsEstimate: r.eps_estimate,
+      epsYoyPct: r.eps_yoy_pct,
+      guidanceText: r.guidance_text ?? "",
+      highlightsText: r.highlights_text ?? "",
+      beat: r.beat,
+    };
+    const key = `${r.ticker}|${row.period}`;
+    const cur = byQuarter.get(key);
+    if (!cur || completeness(row) > completeness(cur) || (completeness(row) === completeness(cur) && row.date > cur.date)) {
+      byQuarter.set(key, row);
+    }
   }
 
   const results: Record<string, EarningsResult[]> = {};
-  for (const [ticker, rows] of perTicker) {
-    rows.sort((a, b) => a.date.localeCompare(b.date)); // oldest first
-    const clusters: (typeof resRows)[] = [];
-    for (const r of rows) {
-      const last = clusters[clusters.length - 1];
-      const near =
-        last &&
-        new Date(r.date + "T00:00:00Z").getTime() -
-          new Date(last[last.length - 1].date + "T00:00:00Z").getTime() <
-          75 * DAY;
-      if (near) last.push(r);
-      else clusters.push([r]);
-    }
-
-    const merged: EarningsResult[] = clusters.map((cluster) => {
-      const best = cluster.reduce((a, b) => (completeness(b) >= completeness(a) ? b : a));
-      const labelDate = cluster[0].date; // earliest = fiscal-quarter-end
-      return {
-        ticker,
-        date: labelDate,
-        period: periodLabel(labelDate),
-        revenue: best.revenue,
-        revenueEstimate: best.revenue_estimate,
-        revenueYoyPct: best.revenue_yoy_pct,
-        eps: best.eps,
-        epsEstimate: best.eps_estimate,
-        epsYoyPct: best.eps_yoy_pct,
-        guidanceText: best.guidance_text ?? "",
-        highlightsText: best.highlights_text ?? "",
-        beat: best.beat,
-      };
-    });
-    merged.sort((a, b) => b.date.localeCompare(a.date));
-    results[ticker] = merged.slice(0, 4);
+  for (const row of byQuarter.values()) (results[row.ticker] ??= []).push(row);
+  for (const k of Object.keys(results)) {
+    results[k].sort((a, b) => b.date.localeCompare(a.date));
+    results[k] = results[k].slice(0, 4);
   }
 
   return { updatedAt: new Date().toISOString(), calendar, results };
@@ -369,12 +353,20 @@ export async function pollEarningsResults(
   const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
   // Include yesterday so an AMC report (actuals ~20:40 UTC) whose poll window ran out the same
   // evening still gets picked up the next morning until it has a complete result row.
+  // A calendar entry is "due" if there's no COMPLETE result row (beat set) for its quarter yet —
+  // matched by ticker + a result date within the 70 days before the announcement date.
   const due = await db.all<{ ticker: string; date: string; hour: string }>(
     d1,
     `SELECT ec.ticker, ec.date, ec.hour
        FROM earnings_calendar ec
-       LEFT JOIN earnings_results er ON er.ticker = ec.ticker AND er.date = ec.date
-      WHERE ec.date IN (?, ?) AND (er.ticker IS NULL OR er.beat IS NULL)`,
+      WHERE ec.date IN (?, ?)
+        AND NOT EXISTS (
+          SELECT 1 FROM earnings_results er
+           WHERE er.ticker = ec.ticker
+             AND er.beat IS NOT NULL
+             AND er.date <= ec.date
+             AND er.date >= date(ec.date, '-70 days')
+        )`,
     yesterday,
     t,
   );
@@ -383,14 +375,28 @@ export async function pollEarningsResults(
   const now = new Date();
   const nameByTicker = new Map(holdings.map((h) => [h.ticker, h.name]));
 
-  for (const entry of due) {
+  for (const cal of due) {
+    // The Finnhub seed already created an EPS-only row for this quarter, keyed by the fiscal
+    // quarter-end date (~1-8 weeks before the announcement date `cal.date`). Write the poll's
+    // result to THAT row so a report is one row, not two. Fall back to the announcement date.
+    const seed = await db.first<{ date: string }>(
+      d1,
+      `SELECT date FROM earnings_results
+        WHERE ticker = ? AND date <= ? AND date >= date(?, '-70 days')
+        ORDER BY date DESC LIMIT 1`,
+      cal.ticker,
+      cal.date,
+      cal.date,
+    );
+    const entry = { ticker: cal.ticker, date: seed?.date ?? cal.date, hour: cal.hour };
+
     const prior = await db.first<{ beat: number | null; checked_at: string }>(
       d1,
       `SELECT beat, checked_at FROM earnings_results WHERE ticker = ? AND date = ?`,
       entry.ticker,
       entry.date,
     );
-    if (!needsResultsPoll(entry, prior, now)) continue;
+    if (!needsResultsPoll({ date: cal.date, hour: cal.hour }, prior, now)) continue;
 
     let result: Awaited<ReturnType<typeof lookupEarningsResult>> = null;
     try {
@@ -398,7 +404,7 @@ export async function pollEarningsResults(
         anthropicApiKey,
         entry.ticker,
         nameByTicker.get(entry.ticker) ?? entry.ticker,
-        entry.date,
+        cal.date, // ask Claude about the announcement date — that's the reporting event it can search
       );
     } catch {
       result = null;
