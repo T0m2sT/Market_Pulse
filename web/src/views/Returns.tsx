@@ -15,6 +15,12 @@ const VIEW_LABELS: Record<ViewMode, string> = {
   weight: "Weight",
 };
 
+/** Trim trailing zeros from a fractional share count: 0.172579 -> "0.1726", 3 -> "3". */
+function shares(q: number): string {
+  if (Number.isInteger(q)) return String(q);
+  return q.toFixed(4).replace(/\.?0+$/, "");
+}
+
 function PositionRow({ p, totalValue }: { p: PositionReturn; totalValue: number }) {
   const value = p.currentPrice * p.quantity;
   const weight = totalValue > 0 ? (value / totalValue) * 100 : 0;
@@ -26,6 +32,10 @@ function PositionRow({ p, totalValue }: { p: PositionReturn; totalValue: number 
         <>
           {p.isManual ? "Manual" : (p.displayTicker ?? p.ticker)}
           <span style={{ color: "var(--text-tertiary)" }}> · {weight.toFixed(1)}%</span>
+          <span className="num" style={{ color: "var(--text-tertiary)" }}>
+            {" · "}
+            {shares(p.quantity)} sh @ {eur(p.currentPrice)}
+          </span>
         </>
       }
       trailing={

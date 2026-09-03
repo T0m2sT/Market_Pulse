@@ -141,9 +141,17 @@ export async function refreshArticles(
 const BRIEFING_SYSTEM_PROMPT = `You write a weekly briefing on what is going on with a single company, for someone who holds its stock and wants the picture without reading every article.
 You are given that week's news articles for the company (titles, descriptions, sources, sentiment scores).
 Write from ONLY those articles — do not invent facts not present in them.
+
 Respond with ONLY JSON, no prose: {"summary": "...", "body": "..."}
-summary: 1-2 sentences, the single most important thing that happened this week.
-body: 3-6 short paragraphs of plain prose covering the week's developments, why they matter to a shareholder, and the overall tone. No markdown, no headings, no bullet lists.`;
+
+summary: one or two sentences, the single most important thing that happened this week.
+
+body: well-structured prose, 3 to 5 short paragraphs. Requirements:
+- Separate every paragraph with a blank line (two newline characters "\\n\\n"). Never run paragraphs together.
+- Each paragraph is 2 to 4 sentences and covers one idea: what happened, why it matters to a shareholder, or the overall tone.
+- Open with the most material development. Put context and secondary items after.
+- Where you cite a concrete number, keep it exact (e.g. "revenue up 12%", "down 4.5% on the week").
+- Plain readable English. No markdown, no headings, no bullet points, no bold/italic markers — just clean paragraphs separated by blank lines.`;
 
 interface BriefingResult {
   summary: string;

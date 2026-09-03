@@ -56,9 +56,13 @@ export default function Today() {
       kind: e.isPast ? ("earnings-past" as const) : ("earnings" as const),
       ticker: e.ticker,
     }));
-    const dividendEvents = (dividends?.dividends ?? [])
-      .filter((d) => !d.locked)
-      .map((d) => ({ date: d.paymentDate, kind: "dividend-pay" as const, ticker: d.ticker }));
+    // Same events as the Dividends tab: both the ex-date and the payment date for every
+    // dividend, so the two calendars agree. (Dividends tab shows all; Today shows all too.)
+    const d = dividends?.dividends ?? [];
+    const dividendEvents = [
+      ...d.map((x) => ({ date: x.exDate, kind: "dividend-ex" as const, ticker: x.ticker })),
+      ...d.map((x) => ({ date: x.paymentDate, kind: "dividend-pay" as const, ticker: x.ticker })),
+    ];
     return [...earningsEvents, ...dividendEvents];
   }, [earnings, dividends]);
 
@@ -67,9 +71,10 @@ export default function Today() {
 
   const holdingByTicker = new Map((holdings?.positions ?? []).map((p) => [p.ticker, p]));
 
-  const futureDividends = dividends.dividends.filter((d) => !d.locked);
   const shownEarnings = selectedDate ? earnings.calendar.filter((e) => e.date === selectedDate) : [];
-  const shownDividends = selectedDate ? futureDividends.filter((d) => d.paymentDate === selectedDate) : [];
+  const shownDividends = selectedDate
+    ? dividends.dividends.filter((d) => d.exDate === selectedDate || d.paymentDate === selectedDate)
+    : [];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
@@ -207,6 +212,7 @@ export default function Today() {
             })}
             {shownDividends.map((d) => {
               const weight = holdingByTicker.get(d.ticker)?.weight;
+              const isPayDate = d.paymentDate === selectedDate;
               return (
                 <div key={`d-${d.ticker}`}>
                   <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
@@ -234,15 +240,19 @@ export default function Today() {
                         }}
                       >
                         {weight !== undefined && <>{(weight * 100).toFixed(1)}% · </>}
-                        Dividend
+                        {isPayDate ? "Payment" : "Ex-dividend"}
+                        {d.yieldPct !== null && <> · {d.yieldPct.toFixed(2)}% yield</>}
                       </p>
                     </div>
                   </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: "var(--space-3)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: "var(--space-3)" }}>
                     <span className="num" style={{ fontSize: 13, color: "var(--text-tertiary)" }}>
                       {eur(d.perShareEur)}/share × {d.qualifyingShares.toFixed(4)}
                     </span>
-                    <span className="num positive" style={{ fontWeight: 600 }}>
+                    <span
+                      className={`num ${isPayDate ? "glow-positive" : ""}`}
+                      style={isPayDate ? { fontWeight: 600 } : { fontWeight: 600, color: "var(--text-primary)" }}
+                    >
                       {eur(d.amountEur)}
                     </span>
                   </div>

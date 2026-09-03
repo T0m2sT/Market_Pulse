@@ -285,8 +285,12 @@ export async function refreshEarningsCalendar(
 
 async function retainCalendar(d1: D1Database): Promise<void> {
   const t = today();
-  const tickers = await db.all<{ ticker: string }>(d1, `SELECT DISTINCT ticker FROM earnings_calendar`);
-  for (const { ticker } of tickers) {
+  // earnings_calendar and earnings_results use DIFFERENT date conventions — calendar rows carry
+  // the announcement date (e.g. 2026-08-26), result rows carry the fiscal quarter-end date
+  // (e.g. 2026-06-30). Prune each table by its OWN dates: keeping the 4 most recent past entries
+  // per ticker in each. (Pruning results by calendar dates was deleting valid recent results.)
+  const calTickers = await db.all<{ ticker: string }>(d1, `SELECT DISTINCT ticker FROM earnings_calendar`);
+  for (const { ticker } of calTickers) {
     const past = await db.all<{ date: string }>(
       d1,
       `SELECT date FROM earnings_calendar WHERE ticker = ? AND date < ? ORDER BY date DESC`,
@@ -294,9 +298,30 @@ async function retainCalendar(d1: D1Database): Promise<void> {
       t,
     );
     if (past.length > KEEP_PAST_PER_TICKER) {
-      const floor = past[KEEP_PAST_PER_TICKER].date;
-      await db.run(d1, `DELETE FROM earnings_calendar WHERE ticker = ? AND date <= ?`, ticker, floor);
-      await db.run(d1, `DELETE FROM earnings_results WHERE ticker = ? AND date <= ?`, ticker, floor);
+      await db.run(
+        d1,
+        `DELETE FROM earnings_calendar WHERE ticker = ? AND date <= ?`,
+        ticker,
+        past[KEEP_PAST_PER_TICKER].date,
+      );
+    }
+  }
+
+  const resTickers = await db.all<{ ticker: string }>(d1, `SELECT DISTINCT ticker FROM earnings_results`);
+  for (const { ticker } of resTickers) {
+    const past = await db.all<{ date: string }>(
+      d1,
+      `SELECT date FROM earnings_results WHERE ticker = ? AND date < ? ORDER BY date DESC`,
+      ticker,
+      t,
+    );
+    if (past.length > KEEP_PAST_PER_TICKER) {
+      await db.run(
+        d1,
+        `DELETE FROM earnings_results WHERE ticker = ? AND date <= ?`,
+        ticker,
+        past[KEEP_PAST_PER_TICKER].date,
+      );
     }
   }
 }

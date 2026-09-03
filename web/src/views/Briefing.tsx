@@ -43,16 +43,27 @@ export default function Briefing() {
         </span>
       </div>
 
-      <h1 style={{ fontSize: 20, lineHeight: 1.35 }}>{briefing.summary}</h1>
+      <h1 style={{ fontSize: 20, lineHeight: 1.4 }}>{briefing.summary}</h1>
 
-      {briefing.body
-        .split(/\n+/)
-        .filter(Boolean)
-        .map((para, i) => (
-          <p key={i} style={{ fontSize: 15, lineHeight: 1.6, color: "var(--text-primary)" }}>
-            {para}
-          </p>
-        ))}
+      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
+        {briefing.body
+          .split(/\n\s*\n|\n/)
+          .map((p) => p.trim())
+          .filter(Boolean)
+          .map((para, i) => (
+            <p
+              key={i}
+              style={{
+                fontSize: 15,
+                lineHeight: 1.7,
+                color: "var(--text-primary)",
+                margin: 0,
+              }}
+            >
+              {para}
+            </p>
+          ))}
+      </div>
     </div>
   );
 }
