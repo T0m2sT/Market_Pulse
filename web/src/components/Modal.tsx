@@ -5,10 +5,14 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
   const [dragX, setDragX] = useState(0);
   const [dragging, setDragging] = useState(false);
 
+  // The modal is rendered inside <main>, whose own swipe handler switches tabs / goes back —
+  // stop touch events here so a swipe on the popup doesn't also move the page behind it.
   const onTouchStart = (e: React.TouchEvent) => {
+    e.stopPropagation();
     touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
   };
   const onTouchMove = (e: React.TouchEvent) => {
+    e.stopPropagation();
     if (!touchStart.current) return;
     const dx = e.touches[0].clientX - touchStart.current.x;
     const dy = e.touches[0].clientY - touchStart.current.y;
@@ -18,6 +22,7 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
     }
   };
   const onTouchEnd = (e: React.TouchEvent) => {
+    e.stopPropagation();
     setDragging(false);
     setDragX(0);
     if (!touchStart.current) return;

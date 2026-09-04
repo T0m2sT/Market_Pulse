@@ -53,32 +53,36 @@ function daysFromNow(n: number): string {
 
 /**
  * Calendar-quarter label from a date (fallback when fiscal quarter/year unknown).
- * Finnhub's `period` is the fiscal quarter-END date and can be in the future for a quarter that
- * was just reported (a company reports Q_n mid-Q_n+1). When the date is still ahead of today,
- * step back one quarter so a past result never reads as a future quarter ("Q1 2027").
+ * Finnhub's `period` is the fiscal quarter-END date and is often in the FUTURE for a quarter that
+ * was just reported (a company reports Q_n partway through Q_n+1, and offset-fiscal-year names like
+ * NVDA sit even further ahead). A past, reported result must never read as a future quarter, so any
+ * date at or beyond the current quarter is clamped to the most recent quarter that has fully ended.
  */
 export function periodLabel(date: string, now: string = today()): string {
   let [y, m] = date.split("-").map(Number);
   if (!y || !m) return date;
-  if (date > now) {
-    m -= 3;
-    if (m <= 0) {
-      m += 12;
-      y -= 1;
-    }
-  }
-  return `Q${Math.ceil(m / 3)} ${y}`;
+
+  const [ny, nm] = now.split("-").map(Number);
+  const nowIdx = ny * 4 + Math.ceil(nm / 3); // quarter index of "now"
+  let idx = y * 4 + Math.ceil(m / 3);
+  // Clamp to the last fully-completed quarter (nowIdx - 1) when the date is current or future.
+  if (idx >= nowIdx) idx = nowIdx - 1;
+
+  const q = ((idx - 1) % 4) + 1;
+  y = Math.floor((idx - 1) / 4);
+  return `Q${q} ${y}`;
 }
 
 /**
  * Label a quarter using the company's OWN fiscal quarter+year when Finnhub provides them, else
- * fall back to the calendar quarter of the date. Companies with offset fiscal years (NVDA, MSFT,
- * AVGO, TJX, ...) report e.g. "Q2 FY2027" in mid-2026 — labelling that by calendar quarter
- * ("Q3 2026") is confusing and made the just-reported quarter look like the wrong one.
+ * fall back to the calendar quarter. Companies with offset fiscal years (NVDA, MSFT, AVGO, TJX, ...)
+ * report e.g. "Q2 FY2027" in mid-2026 — labelling that by calendar quarter is confusing and made
+ * the just-reported quarter look like the wrong one. `announcedDate` (when results came out) is a
+ * better fallback anchor than the fiscal period-end, which can be a year ahead.
  */
-export function fiscalLabel(quarter: number, year: number, periodDate: string): string {
+export function fiscalLabel(quarter: number, year: number, anchorDate: string): string {
   if (quarter >= 1 && quarter <= 4 && year > 2000) return `Q${quarter} FY${year}`;
-  return periodLabel(periodDate);
+  return periodLabel(anchorDate);
 }
 
 // ---- Reads ----
@@ -139,7 +143,7 @@ export async function getEarnings(d1: D1Database, holdings: Holding[]): Promise<
     (results[r.ticker] ??= []).push({
       ticker: r.ticker,
       date: r.announced_date ?? r.date,
-      period: fiscalLabel(r.fiscal_quarter ?? 0, r.fiscal_year ?? 0, r.date),
+      period: fiscalLabel(r.fiscal_quarter ?? 0, r.fiscal_year ?? 0, r.announced_date ?? r.date),
       eps: r.eps,
       epsEstimate: r.eps_estimate,
       surprisePct: r.surprise_pct,
@@ -265,7 +269,7 @@ export async function refreshEarnings(
            beat = excluded.beat, checked_at = excluded.checked_at`,
         h.ticker,
         periodDate,
-        fiscalLabel(fq, fy, periodDate),
+        fiscalLabel(fq, fy, announced),
         fq || null,
         fy || null,
         announced,
