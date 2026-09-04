@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { BrowserRouter, Routes, Route, NavLink, useLocation, useNavigate } from "react-router-dom";
 import Today from "./views/Today";
 import News from "./views/News";
@@ -79,28 +79,64 @@ function SwipeableContent() {
   const location = useLocation();
   const navigate = useNavigate();
   const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const [dragX, setDragX] = useState(0);
+  const [dragging, setDragging] = useState(false);
 
   const tabIndex = TABS.findIndex((t) => (t.end ? location.pathname === t.to : location.pathname.startsWith(t.to)));
-  const swipeable = tabIndex !== -1;
+  const detail = isDetailRoute(location.pathname);
+  const swipeable = tabIndex !== -1 || detail;
 
   const onTouchStart = (e: React.TouchEvent) => {
     if (!swipeable) return;
     touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
   };
 
+  const onTouchMove = (e: React.TouchEvent) => {
+    // Only detail screens get the drag-to-go-back follow effect.
+    if (!detail || !touchStart.current) return;
+    const dx = e.touches[0].clientX - touchStart.current.x;
+    const dy = e.touches[0].clientY - touchStart.current.y;
+    if (dx > 0 && Math.abs(dy) < Math.abs(dx)) {
+      setDragging(true);
+      setDragX(dx);
+    }
+  };
+
   const onTouchEnd = (e: React.TouchEvent) => {
+    setDragging(false);
+    setDragX(0);
     if (!swipeable || !touchStart.current) return;
     const dx = e.changedTouches[0].clientX - touchStart.current.x;
     const dy = e.changedTouches[0].clientY - touchStart.current.y;
     touchStart.current = null;
     if (Math.abs(dy) > SWIPE_MAX_VERTICAL_PX || Math.abs(dx) < SWIPE_THRESHOLD_PX) return;
 
+    // On a detail screen, left-to-right swipe goes back.
+    if (detail) {
+      if (dx > 0) navigate(-1);
+      return;
+    }
+
     const nextIndex = dx < 0 ? tabIndex + 1 : tabIndex - 1;
     if (nextIndex >= 0 && nextIndex < TABS.length) navigate(TABS[nextIndex].to);
   };
 
   return (
-    <main className="app-content" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+    <main
+      className="app-content"
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+      style={
+        dragX > 0
+          ? {
+              transform: `translateX(${dragX}px)`,
+              opacity: Math.max(0.4, 1 - dragX / 400),
+              transition: dragging ? "none" : "transform 200ms ease-out, opacity 200ms ease-out",
+            }
+          : undefined
+      }
+    >
       <Routes>
         <Route path="/" element={<Today />} />
         <Route path="/news" element={<News />} />
