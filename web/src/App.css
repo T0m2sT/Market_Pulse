@@ -11,6 +11,7 @@
   flex: 1;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   padding: var(--space-4) var(--space-4) calc(var(--space-4) + 76px + env(safe-area-inset-bottom));
 }
 

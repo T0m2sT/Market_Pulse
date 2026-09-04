@@ -30,10 +30,11 @@ function PositionRow({ p, totalValue }: { p: PositionReturn; totalValue: number 
       label={p.name}
       sublabel={
         <>
-          {p.isManual ? "Manual" : (p.displayTicker ?? p.ticker)}
-          <span style={{ color: "var(--text-tertiary)" }}> · {weight.toFixed(1)}%</span>
-          <span className="num" style={{ color: "var(--text-tertiary)" }}>
-            {" · "}
+          <span style={{ display: "block" }}>
+            {p.isManual ? "Manual" : (p.displayTicker ?? p.ticker)}
+            <span style={{ color: "var(--text-tertiary)" }}> · {weight.toFixed(1)}%</span>
+          </span>
+          <span className="num" style={{ display: "block", color: "var(--text-tertiary)" }}>
             {shares(p.quantity)} sh @ {eur(p.currentPrice)}
           </span>
         </>

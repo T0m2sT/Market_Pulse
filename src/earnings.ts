@@ -51,10 +51,22 @@ function daysFromNow(n: number): string {
   return new Date(Date.now() + n * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
-/** Calendar-quarter label from a date (fallback when fiscal quarter/year unknown). */
-export function periodLabel(date: string): string {
-  const [y, m] = date.split("-").map(Number);
+/**
+ * Calendar-quarter label from a date (fallback when fiscal quarter/year unknown).
+ * Finnhub's `period` is the fiscal quarter-END date and can be in the future for a quarter that
+ * was just reported (a company reports Q_n mid-Q_n+1). When the date is still ahead of today,
+ * step back one quarter so a past result never reads as a future quarter ("Q1 2027").
+ */
+export function periodLabel(date: string, now: string = today()): string {
+  let [y, m] = date.split("-").map(Number);
   if (!y || !m) return date;
+  if (date > now) {
+    m -= 3;
+    if (m <= 0) {
+      m += 12;
+      y -= 1;
+    }
+  }
   return `Q${Math.ceil(m / 3)} ${y}`;
 }
 

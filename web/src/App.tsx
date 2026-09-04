@@ -109,13 +109,14 @@ function SwipeableContent() {
     const dx = e.changedTouches[0].clientX - touchStart.current.x;
     const dy = e.changedTouches[0].clientY - touchStart.current.y;
     touchStart.current = null;
-    if (Math.abs(dy) > SWIPE_MAX_VERTICAL_PX || Math.abs(dx) < SWIPE_THRESHOLD_PX) return;
 
-    // On a detail screen, left-to-right swipe goes back.
+    // On a detail screen, a rightward swipe (mostly horizontal, past threshold) goes back.
     if (detail) {
-      if (dx > 0) navigate(-1);
+      if (dx > SWIPE_THRESHOLD_PX && Math.abs(dx) > Math.abs(dy)) navigate(-1);
       return;
     }
+
+    if (Math.abs(dy) > SWIPE_MAX_VERTICAL_PX || Math.abs(dx) < SWIPE_THRESHOLD_PX) return;
 
     const nextIndex = dx < 0 ? tabIndex + 1 : tabIndex - 1;
     if (nextIndex >= 0 && nextIndex < TABS.length) navigate(TABS[nextIndex].to);

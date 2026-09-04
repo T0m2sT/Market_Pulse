@@ -172,7 +172,7 @@ export default {
     //                             briefing row yet — a full week drains over ~2 daily runs, keeping
     //                             any one invocation's Claude-call count bounded)
     //  "* 13-19 * * 2-6"          returns snapshot, every minute, regular market hours (9:30am-4pm ET)
-    //  "*/5 8-12,20-23 * * 2-6"   returns snapshot, every 5 min, pre/post market
+    //  "*/5 0-12,20-23 * * 2-6"   returns snapshot, every 5 min, overnight + pre/post market
     //                             (both fetch live T212 prices but do NOT write the holdings doc —
     //                             holdings only change on a manual sync — so each tick is 1 KV write)
     //  "0 6,13,20 * * *"          news article ingest to D1, 3x/day (~25 Marketaux calls/cycle)
