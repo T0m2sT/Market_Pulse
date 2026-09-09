@@ -81,6 +81,11 @@ export default function Today() {
       <h1>Today</h1>
       <Freshness updatedAt={news.updatedAt} />
 
+      <SectionHeader>Calendar</SectionHeader>
+      <Card>
+        <Calendar events={calendarEvents} onSelectDate={setSelectedDate} />
+      </Card>
+
       <SectionHeader>News</SectionHeader>
       {news.briefings.length === 0 && (
         <Card>
@@ -131,11 +136,6 @@ export default function Today() {
           </Card>
         );
       })}
-
-      <SectionHeader>Calendar</SectionHeader>
-      <Card>
-        <Calendar events={calendarEvents} onSelectDate={setSelectedDate} />
-      </Card>
 
       {selectedDate && (shownEarnings.length > 0 || shownDividends.length > 0) && (
         <Modal

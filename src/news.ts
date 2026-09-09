@@ -45,6 +45,12 @@ export function shouldGenerateBriefings(
  *  daily run, so a full week of ~20 companies is briefed within ~2 days. */
 const MAX_BRIEFINGS_PER_RUN = 8;
 
+/** Canned briefing for a holding with no news that week — inserted without a Claude call so every
+ *  stock has a row. article_count 0 is the "quiet week" marker the frontend greys out. */
+const QUIET_SUMMARY = "No material news this week — no change from last week.";
+const QUIET_BODY =
+  "No news articles were published about this company this week.\n\nNothing has changed relative to last week's picture. This is a routine quiet week, not a signal in itself.";
+
 // ---- Reads ----
 
 export interface NewsDoc {
@@ -285,6 +291,20 @@ export async function refreshBriefings(
     );
     made++;
   }
+
+  // Every holding without a briefing row for this week gets a canned "quiet week" row — no Claude
+  // call. ON CONFLICT DO NOTHING means a real briefing generated above (or on an earlier run) is
+  // never clobbered. Runs regardless of MAX_BRIEFINGS_PER_RUN since it's a plain insert.
+  // ponytail: one batch, fine for <=100 holdings; chunk into 50s if the portfolio ever exceeds that.
+  const now = new Date().toISOString();
+  const quietStatements: [string, unknown[]][] = holdings.map((h) => [
+    `INSERT INTO news_briefings
+       (ticker, week_start, summary, body, sentiment, article_count, seen, created_at)
+     VALUES (?, ?, ?, ?, 0, 0, 0, ?)
+     ON CONFLICT (ticker, week_start) DO NOTHING`,
+    [h.ticker, weekStart, QUIET_SUMMARY, QUIET_BODY, now],
+  ]);
+  await db.batch(d1, quietStatements);
 
   await db.run(d1, `DELETE FROM news_briefings WHERE week_start < ?`, weeksAgo(BRIEFING_RETENTION_WEEKS));
 }

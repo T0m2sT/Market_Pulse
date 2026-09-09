@@ -2,10 +2,17 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import type { NewsDoc, HoldingsDoc } from "../api/types";
-import { Card, Freshness } from "../components/Card";
+import { Card, Freshness, FilterMenu } from "../components/Card";
 import { Button } from "../components/Button";
 import { Input } from "../components/Input";
 import { TickerAvatar } from "../components/TickerAvatar";
+
+type SortMode = "movers" | "weight" | "ticker";
+const SORT_LABELS: Record<SortMode, string> = {
+  movers: "Movers first",
+  weight: "By weight",
+  ticker: "By ticker",
+};
 
 export default function News() {
   const navigate = useNavigate();
@@ -15,6 +22,7 @@ export default function News() {
   const [tickerFilter, setTickerFilter] = useState("");
   const [sentimentFilter, setSentimentFilter] = useState<"all" | "positive" | "negative">("all");
   const [seenFilter, setSeenFilter] = useState<"all" | "unseen">("all");
+  const [sort, setSort] = useState<SortMode>("movers");
 
   useEffect(() => {
     api
@@ -28,14 +36,27 @@ export default function News() {
 
   const filtered = useMemo(() => {
     if (!doc) return [];
-    return doc.briefings.filter((b) => {
+    const weightOf = (t: string) => holdingByTicker.get(t)?.weight ?? 0;
+    const rows = doc.briefings.filter((b) => {
       if (tickerFilter && !b.ticker.toLowerCase().includes(tickerFilter.toLowerCase())) return false;
       if (sentimentFilter === "positive" && b.sentiment < 0) return false;
       if (sentimentFilter === "negative" && b.sentiment >= 0) return false;
       if (seenFilter === "unseen" && b.seen) return false;
       return true;
     });
-  }, [doc, tickerFilter, sentimentFilter, seenFilter]);
+    // Always newest week first; sort within a week by the chosen mode.
+    return rows.sort((a, z) => {
+      if (a.weekStart !== z.weekStart) return z.weekStart.localeCompare(a.weekStart);
+      if (sort === "ticker") return a.ticker.localeCompare(z.ticker);
+      if (sort === "weight") return weightOf(z.ticker) - weightOf(a.ticker);
+      // movers: real briefings by |sentiment| desc, quiet ("no news") rows sink to the bottom
+      const aq = a.articleCount === 0 ? 1 : 0;
+      const zq = z.articleCount === 0 ? 1 : 0;
+      if (aq !== zq) return aq - zq;
+      return Math.abs(z.sentiment) - Math.abs(a.sentiment);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc, holdings, tickerFilter, sentimentFilter, seenFilter, sort]);
 
   if (error) return <p style={{ color: "var(--negative)" }}>{error}</p>;
   if (!doc) return <p style={{ color: "var(--text-tertiary)" }}>Loading…</p>;
@@ -52,7 +73,10 @@ export default function News() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
-      <h1>News</h1>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <h1>News</h1>
+        <FilterMenu mode={sort} onChange={setSort} labels={SORT_LABELS} />
+      </div>
       <Freshness updatedAt={doc.updatedAt} />
 
       <Input
@@ -101,6 +125,7 @@ export default function News() {
 
       {filtered.map((b) => {
         const isPositive = b.sentiment >= 0;
+        const isQuiet = b.articleCount === 0;
         const showWeekHeader = weekHeaderFor.has(`${b.ticker}:${b.weekStart}`);
         return (
           <div key={`${b.ticker}:${b.weekStart}`}>
@@ -124,6 +149,7 @@ export default function News() {
                   padding: 0,
                   textAlign: "left",
                   cursor: "pointer",
+                  opacity: isQuiet ? 0.5 : 1,
                 }}
               >
                 <div
@@ -136,19 +162,33 @@ export default function News() {
                 >
                   <TickerAvatar ticker={b.ticker} logo={holdingByTicker.get(b.ticker)?.logo} size={24} />
                   <span style={{ color: "var(--accent)", fontWeight: 600, fontSize: 13 }}>{b.ticker}</span>
-                  <span
-                    className={`num ${isPositive ? "positive" : "negative"}`}
-                    style={{
-                      fontSize: 11,
-                      padding: "2px 7px",
-                      borderRadius: 999,
-                      background: "var(--bg-elevated-2)",
-                    }}
-                  >
-                    {isPositive ? "+" : ""}
-                    {b.sentiment.toFixed(2)}
-                  </span>
-                  {!b.seen && (
+                  {isQuiet ? (
+                    <span
+                      style={{
+                        fontSize: 11,
+                        padding: "2px 7px",
+                        borderRadius: 999,
+                        background: "var(--bg-elevated-2)",
+                        color: "var(--text-tertiary)",
+                      }}
+                    >
+                      no news
+                    </span>
+                  ) : (
+                    <span
+                      className={`num ${isPositive ? "positive" : "negative"}`}
+                      style={{
+                        fontSize: 11,
+                        padding: "2px 7px",
+                        borderRadius: 999,
+                        background: "var(--bg-elevated-2)",
+                      }}
+                    >
+                      {isPositive ? "+" : ""}
+                      {b.sentiment.toFixed(2)}
+                    </span>
+                  )}
+                  {!b.seen && !isQuiet && (
                     <span
                       style={{
                         width: 8,

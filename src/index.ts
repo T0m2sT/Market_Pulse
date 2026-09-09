@@ -115,7 +115,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
       const weight = new Map(holdings.positions.map((p) => [p.ticker, p.weight]));
       const latestWeek = doc.briefings[0]?.weekStart;
       const top = doc.briefings
-        .filter((b) => b.weekStart === latestWeek)
+        .filter((b) => b.weekStart === latestWeek && b.articleCount > 0)
         .map((b) => ({ b, score: Math.abs(b.sentiment) * Math.sqrt(weight.get(b.ticker) ?? 0) }))
         .sort((a, z) => z.score - a.score)
         .slice(0, 3)
