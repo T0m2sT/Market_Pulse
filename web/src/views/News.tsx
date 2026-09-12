@@ -38,6 +38,7 @@ export default function News() {
     if (!doc) return [];
     const weightOf = (t: string) => holdingByTicker.get(t)?.weight ?? 0;
     const rows = doc.briefings.filter((b) => {
+      if (b.articleCount === 0) return false; // quiet "no news this week" rows aren't shown
       if (tickerFilter && !b.ticker.toLowerCase().includes(tickerFilter.toLowerCase())) return false;
       if (sentimentFilter === "positive" && b.sentiment < 0) return false;
       if (sentimentFilter === "negative" && b.sentiment >= 0) return false;
@@ -49,10 +50,6 @@ export default function News() {
       if (a.weekStart !== z.weekStart) return z.weekStart.localeCompare(a.weekStart);
       if (sort === "ticker") return a.ticker.localeCompare(z.ticker);
       if (sort === "weight") return weightOf(z.ticker) - weightOf(a.ticker);
-      // movers: real briefings by |sentiment| desc, quiet ("no news") rows sink to the bottom
-      const aq = a.articleCount === 0 ? 1 : 0;
-      const zq = z.articleCount === 0 ? 1 : 0;
-      if (aq !== zq) return aq - zq;
       return Math.abs(z.sentiment) - Math.abs(a.sentiment);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -125,7 +122,6 @@ export default function News() {
 
       {filtered.map((b) => {
         const isPositive = b.sentiment >= 0;
-        const isQuiet = b.articleCount === 0;
         const showWeekHeader = weekHeaderFor.has(`${b.ticker}:${b.weekStart}`);
         return (
           <div key={`${b.ticker}:${b.weekStart}`}>
@@ -149,7 +145,6 @@ export default function News() {
                   padding: 0,
                   textAlign: "left",
                   cursor: "pointer",
-                  opacity: isQuiet ? 0.5 : 1,
                 }}
               >
                 <div
@@ -162,33 +157,19 @@ export default function News() {
                 >
                   <TickerAvatar ticker={b.ticker} logo={holdingByTicker.get(b.ticker)?.logo} size={24} />
                   <span style={{ color: "var(--accent)", fontWeight: 600, fontSize: 13 }}>{b.ticker}</span>
-                  {isQuiet ? (
-                    <span
-                      style={{
-                        fontSize: 11,
-                        padding: "2px 7px",
-                        borderRadius: 999,
-                        background: "var(--bg-elevated-2)",
-                        color: "var(--text-tertiary)",
-                      }}
-                    >
-                      no news
-                    </span>
-                  ) : (
-                    <span
-                      className={`num ${isPositive ? "positive" : "negative"}`}
-                      style={{
-                        fontSize: 11,
-                        padding: "2px 7px",
-                        borderRadius: 999,
-                        background: "var(--bg-elevated-2)",
-                      }}
-                    >
-                      {isPositive ? "+" : ""}
-                      {b.sentiment.toFixed(2)}
-                    </span>
-                  )}
-                  {!b.seen && !isQuiet && (
+                  <span
+                    className={`num ${isPositive ? "positive" : "negative"}`}
+                    style={{
+                      fontSize: 11,
+                      padding: "2px 7px",
+                      borderRadius: 999,
+                      background: "var(--bg-elevated-2)",
+                    }}
+                  >
+                    {isPositive ? "+" : ""}
+                    {b.sentiment.toFixed(2)}
+                  </span>
+                  {!b.seen && (
                     <span
                       style={{
                         width: 8,
