@@ -184,6 +184,7 @@ export async function refreshEarnings(
   );
 
   // --- Calendar (upcoming + recent past dots) ---
+  const t = today();
   const from = new Date(Date.now() - CALENDAR_LOOKBACK_DAYS * 86400000).toISOString().slice(0, 10);
   const to = daysFromNow(CALENDAR_FUTURE_DAYS);
   let calendar: Awaited<ReturnType<typeof fetchEarningsCalendar>> = [];
@@ -192,10 +193,17 @@ export async function refreshEarnings(
   } catch {
     calendar = [];
   }
+  // Finnhub re-estimates a ticker's upcoming date as it firms up (e.g. "late Oct" -> "Oct 29"),
+  // which previously left the old estimated row behind as a second, stale calendar dot for the
+  // same company. Group fresh rows per ticker so we can drop any future row Finnhub no longer
+  // lists for it before inserting the current ones.
+  const freshDatesByTicker = new Map<string, Set<string>>();
   const calStatements: [string, unknown[]][] = [];
   for (const e of calendar) {
     const h = lookupToHolding.get(e.symbol);
     if (!h) continue;
+    if (!freshDatesByTicker.has(h.ticker)) freshDatesByTicker.set(h.ticker, new Set());
+    freshDatesByTicker.get(h.ticker)!.add(e.date);
     calStatements.push([
       `INSERT INTO earnings_calendar (ticker, date, hour, quarter, year, eps_estimate, revenue_estimate, is_estimate)
        VALUES (?, ?, ?, ?, ?, ?, ?, 0)
@@ -204,6 +212,13 @@ export async function refreshEarnings(
          eps_estimate = COALESCE(excluded.eps_estimate, earnings_calendar.eps_estimate),
          revenue_estimate = COALESCE(excluded.revenue_estimate, earnings_calendar.revenue_estimate)`,
       [h.ticker, e.date, e.hour ?? "", e.quarter ?? 0, e.year ?? 0, e.epsEstimate, e.revenueEstimate],
+    ]);
+  }
+  for (const [ticker, dates] of freshDatesByTicker) {
+    const placeholders = [...dates].map(() => "?").join(",");
+    calStatements.push([
+      `DELETE FROM earnings_calendar WHERE ticker = ? AND date >= ? AND date NOT IN (${placeholders})`,
+      [ticker, t, ...dates],
     ]);
   }
   await db.batch(d1, calStatements);
