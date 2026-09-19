@@ -1,4 +1,7 @@
-const API_BASE = import.meta.env.VITE_API_BASE ?? "https://portfolio-news.t212newsapp.workers.dev";
+const API_BASE = import.meta.env.VITE_API_BASE;
+if (!API_BASE) {
+  throw new Error("VITE_API_BASE is not set — see web/.env.example");
+}
 const TOKEN_KEY = "portfolio-news:token";
 
 export function getToken(): string | null {

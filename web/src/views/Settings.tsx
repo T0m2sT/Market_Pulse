@@ -4,6 +4,59 @@ import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { Input } from "../components/Input";
 
+interface ProviderKey {
+  secret: string;
+  purpose: string;
+  url: string;
+}
+
+const PROVIDER_KEYS: ProviderKey[] = [
+  { secret: "T212_API_KEY_ID / T212_API_SECRET", purpose: "Syncs your live portfolio positions from Trading212.", url: "https://www.trading212.com" },
+  { secret: "FINNHUB_API_KEY", purpose: "Earnings calendar and historical EPS results.", url: "https://finnhub.io/register" },
+  { secret: "MARKETAUX_API_KEY", purpose: "Raw news articles per holding, feeds the weekly briefing.", url: "https://www.marketaux.com" },
+  { secret: "ANTHROPIC_API_KEY", purpose: "Claude writes the weekly news briefings.", url: "https://console.anthropic.com" },
+  { secret: "EODHD_API_KEY", purpose: "Dividend ex-date, pay-date and amount data.", url: "https://eodhd.com" },
+];
+
+function InfoRow({ k }: { k: ProviderKey }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--space-2)" }}>
+        <code style={{ fontSize: 12 }}>{k.secret}</code>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-label={`About ${k.secret}`}
+          title={`About ${k.secret}`}
+          style={{
+            width: 18,
+            height: 18,
+            borderRadius: "50%",
+            border: "1px solid var(--text-tertiary)",
+            background: "none",
+            color: "var(--text-tertiary)",
+            fontSize: 11,
+            lineHeight: "16px",
+            cursor: "pointer",
+            flexShrink: 0,
+          }}
+        >
+          i
+        </button>
+      </div>
+      {open && (
+        <p style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: "var(--space-1)" }}>
+          {k.purpose}{" "}
+          <a href={k.url} target="_blank" rel="noreferrer">
+            Get a key
+          </a>
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function Settings() {
   const [tokenInput, setTokenInput] = useState(getToken() ?? "");
   const [saved, setSaved] = useState(false);
@@ -49,6 +102,19 @@ export default function Settings() {
         <Button variant="primary" onClick={saveToken}>
           {saved ? "Saved" : "Save token"}
         </Button>
+      </Card>
+
+      <Card>
+        <h3 style={{ marginBottom: "var(--space-2)" }}>API keys</h3>
+        <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: "var(--space-3)" }}>
+          These are set as Worker secrets during deployment, not here — see the README. Tap the{" "}
+          <span style={{ fontStyle: "italic" }}>i</span> next to each for what it's for and where to get it.
+        </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+          {PROVIDER_KEYS.map((k) => (
+            <InfoRow key={k.secret} k={k} />
+          ))}
+        </div>
       </Card>
 
       <Card>
