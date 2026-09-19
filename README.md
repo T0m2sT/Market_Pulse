@@ -6,11 +6,11 @@ is a Cloudflare Worker (D1 + KV); frontend is a React PWA.
 
 ## Architecture
 
-- `src/` — Cloudflare Worker (API + cron jobs), data in D1 (`market-pulse`) and KV (`PORTFOLIO_KV`).
-- `web/` — React PWA that talks to the Worker over HTTP.
+- `src/`: Cloudflare Worker (API + cron jobs), data in D1 (`market-pulse`) and KV (`PORTFOLIO_KV`).
+- `web/`: React PWA that talks to the Worker over HTTP.
 
 All third-party API keys live **only** on the Worker, as Cloudflare secrets. The
-browser never sees them — it only holds a bearer token that authenticates it to
+browser never sees them, it only holds a bearer token that authenticates it to
 your own Worker (see [Bearer token](#bearer-token) below).
 
 ## Setup
@@ -31,19 +31,19 @@ Apply the schema:
 npx wrangler d1 migrations apply market-pulse --remote
 ```
 
-### 2. API keys — what you need and where to get them
+### 2. API keys: what you need and where to get them
 
 Every key below is set as a Worker **secret** (`npx wrangler secret put <NAME>`),
 never committed to the repo and never sent to the browser.
 
 | Secret | Used for | Where to get it | Free tier |
 | --- | --- | --- | --- |
-| `API_TOKEN` | Your own bearer token — gates every request to your Worker | Make one up yourself, e.g. `openssl rand -hex 32` | n/a |
-| `T212_API_KEY_ID` | Trading212 — pulls your live portfolio positions | Trading212 app → Settings → API (Invest account) → generate key | Free, personal use |
-| `T212_API_SECRET` | Trading212 — paired with the key ID above | Same place as above | Free |
+| `API_TOKEN` | Your own bearer token, gates every request to your Worker | Make one up yourself, e.g. `openssl rand -hex 32` | n/a |
+| `T212_API_KEY_ID` | Trading212, pulls your live portfolio positions | Trading212 app → Settings → API (Invest account) → generate key | Free, personal use |
+| `T212_API_SECRET` | Trading212, paired with the key ID above | Same place as above | Free |
 | `FINNHUB_API_KEY` | Earnings calendar + historical EPS results | [finnhub.io/register](https://finnhub.io/register) | Free tier, rate-limited |
 | `MARKETAUX_API_KEY` | Raw news articles per holding, feeds the weekly briefing | [marketaux.com](https://www.marketaux.com/) → sign up → API token | Free tier: 100 requests/day |
-| `ANTHROPIC_API_KEY` | Claude — writes the weekly news briefings | [console.anthropic.com](https://console.anthropic.com/) → API Keys | Pay-as-you-go, no free tier |
+| `ANTHROPIC_API_KEY` | Claude, writes the weekly news briefings | [console.anthropic.com](https://console.anthropic.com/) → API Keys | Pay-as-you-go, no free tier |
 | `EODHD_API_KEY` | Dividend ex-date / pay-date / amount data | [eodhd.com](https://eodhd.com/) → register → API key | Free tier available |
 
 Set each one:
@@ -59,7 +59,7 @@ npx wrangler secret put EODHD_API_KEY
 ```
 
 For local development, put the same values in a `.dev.vars` file at the repo
-root (already gitignored — never commit this file):
+root (already gitignored, never commit this file):
 
 ```
 API_TOKEN=...
@@ -89,7 +89,7 @@ npm run dev
 
 ### Bearer token
 
-The PWA's **Settings** page has a "Bearer token" field — this is the `API_TOKEN`
+The PWA's **Settings** page has a "Bearer token" field, this is the `API_TOKEN`
 value you generated in step 2. It's stored in the browser's `localStorage` and
 sent as an `Authorization: Bearer <token>` header on every API call. It's the
 only credential that ever touches the browser; it authenticates *you* to *your*
