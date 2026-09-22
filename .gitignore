@@ -6,3 +6,9 @@ web/dist/
 dist/
 *.log
 .DS_Store
+
+# AI tooling
+.claude/
+.impeccable/
+.superpowers/
+docs/superpowers/
