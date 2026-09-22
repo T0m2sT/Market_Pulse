@@ -87,6 +87,20 @@ npm install
 npm run dev
 ```
 
+### 5. Deploy the frontend
+
+The PWA is deployed separately, to Cloudflare Pages. There's no Git integration,
+so each deploy is manual:
+
+```bash
+cd web
+npm run build
+npx wrangler pages deploy dist --project-name=portfolio-news-app
+```
+
+`VITE_API_BASE` in `.env` is baked into the build at build time, so `npm run
+build` must be re-run (not just the deploy step) whenever that value changes.
+
 ### Bearer token
 
 The PWA's **Settings** page has a "Bearer token" field, this is the `API_TOKEN`
