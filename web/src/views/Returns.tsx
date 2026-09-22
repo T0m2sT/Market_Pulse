@@ -119,9 +119,11 @@ export default function Returns() {
                   </div>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
-                  {s.positions.map((p) => (
-                    <PositionRow key={p.ticker} p={p} totalValue={doc.totalValue} />
-                  ))}
+                  {[...s.positions]
+                    .sort((a, b) => b.currentPrice * b.quantity - a.currentPrice * a.quantity)
+                    .map((p) => (
+                      <PositionRow key={p.ticker} p={p} totalValue={doc.totalValue} />
+                    ))}
                 </div>
               </div>
             );

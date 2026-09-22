@@ -34,6 +34,7 @@ describe("resolveDividendRow", () => {
     paymentDate: "2026-09-01",
     perShare: 1.7,
     fxToEur: 0.92,
+    withholdingRate: 0,
     quantity: 3.42,
     currentPriceEur: 110,
     paymentsPerYear: 4,
@@ -82,5 +83,20 @@ describe("resolveDividendRow", () => {
     // snapshot to carry forward, so it's valued at today's FX + today's share count.
     expect(row.per_share_eur).toBeCloseTo(1.7 * 0.92);
     expect(row.qualifying_shares).toBe(3.42);
+  });
+
+  it("nets out withholding tax on the announced (unlocked) amount", () => {
+    // 0.16 gross * 0.85 net ~= 0.136 -> matches the real 0.14 payout vs 0.16 announced mismatch.
+    const future = {
+      ...base,
+      exDate: "2026-09-20",
+      today: "2026-09-02",
+      perShare: 0.16,
+      fxToEur: 1,
+      withholdingRate: 0.15,
+      quantity: 1,
+    };
+    const row = resolveDividendRow(future, null);
+    expect(row.per_share_eur).toBeCloseTo(0.136);
   });
 });

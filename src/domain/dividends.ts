@@ -25,6 +25,15 @@ export interface Dividend extends DividendRow {
 const EARLIEST_EX_DATE = "2026-08-01";
 const RETENTION_DAYS = 60;
 
+/** US/EU tax-treaty withholding rate on US-sourced dividends — brokers (T212 included) pay out
+ * net of this, but EODHD's `value` is gross. Applied only to USD dividends; other currencies
+ * (e.g. KAP.LSE's KZT) aren't known to withhold at this rate so are left untouched. */
+const US_WITHHOLDING_RATE = 0.15;
+
+function withholdingRate(currency: string): number {
+  return currency === "USD" ? US_WITHHOLDING_RATE : 0;
+}
+
 function daysAgo(n: number): string {
   return new Date(Date.now() - n * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
@@ -56,6 +65,8 @@ interface ResolveInput {
   perShare: number;
   /** Conversion rate from that currency to EUR. */
   fxToEur: number;
+  /** Fraction withheld at source (e.g. 0.15 for US dividends) — applied to the EUR-converted amount. */
+  withholdingRate: number;
   quantity: number;
   /** Current share price in EUR (T212 account currency) — yield is computed entirely in EUR. */
   currentPriceEur: number;
@@ -84,7 +95,10 @@ export function resolveDividendRow(
   // `locked && prior`: freeze the stored snapshot. `locked && !prior`: the ex-date passed before
   // this dividend was ever stored (D1 empty at first deploy, or holding added late) — no snapshot
   // to freeze, so fall back to today's FX + today's share count. Best effort.
-  const perShareEur = locked && prior ? prior.per_share_eur : input.perShare * input.fxToEur;
+  const perShareEur =
+    locked && prior
+      ? prior.per_share_eur
+      : input.perShare * input.fxToEur * (1 - input.withholdingRate);
   const qualifyingShares = locked && prior ? prior.qualifying_shares : input.quantity;
   const yieldPct =
     locked && prior
@@ -187,6 +201,7 @@ export async function refreshDividends(
           paymentDate: ev.paymentDate,
           perShare: ev.perShare,
           fxToEur: rate,
+          withholdingRate: withholdingRate(ev.currency),
           quantity: h.quantity,
           currentPriceEur: h.currentPrice,
           paymentsPerYear: ppy,
