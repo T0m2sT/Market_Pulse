@@ -1,7 +1,7 @@
-import { db } from "./db";
-import { fetchEarningsCalendar, fetchEarningsHistory, fetchRecentEarningsWithRevenue } from "./finnhub";
+import { db } from "../lib/db";
+import { fetchEarningsCalendar, fetchEarningsHistory, fetchRecentEarningsWithRevenue } from "../integrations/finnhub";
 import { finnhubLookupTicker, type Holding } from "./holdings";
-import { lookupEarningsViaWebSearch } from "./web-earnings";
+import { lookupEarningsViaWebSearch } from "../integrations/web-earnings";
 
 const CALENDAR_LOOKBACK_DAYS = 400;
 const CALENDAR_FUTURE_DAYS = 30;

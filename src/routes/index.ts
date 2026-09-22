@@ -1,5 +1,5 @@
-import { checkAuth } from "./auth";
-import { corsHeaders, withCors } from "./cors";
+import { checkAuth } from "../lib/auth";
+import { corsHeaders, withCors } from "../lib/cors";
 import {
   getHoldings,
   putHoldings,
@@ -7,12 +7,12 @@ import {
   fetchMergedTrading212Positions,
   isValidHoldingsInput,
   normaliseInputWeights,
-} from "./holdings";
-import { getEarnings, refreshEarnings } from "./earnings";
-import { getReturns, refreshReturns } from "./returns";
-import { getBriefings, refreshNews, refreshArticles, refreshBriefings, markBriefingSeen } from "./news";
-import { getDividends, refreshDividends } from "./dividends";
-import { runBackfill } from "./backfill";
+} from "../domain/holdings";
+import { getEarnings, refreshEarnings } from "../domain/earnings";
+import { getReturns, refreshReturns } from "../domain/returns";
+import { getBriefings, refreshNews, refreshArticles, refreshBriefings, markBriefingSeen } from "../domain/news";
+import { getDividends, refreshDividends } from "../domain/dividends";
+import { runBackfill } from "../domain/backfill";
 
 async function handle(request: Request, env: Env): Promise<Response> {
     if (request.method === "OPTIONS") {

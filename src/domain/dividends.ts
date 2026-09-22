@@ -1,6 +1,6 @@
-import { db } from "./db";
-import { fetchEodhdDividends, type DividendEvent } from "./eodhd-dividends";
-import { currencyToEurRate } from "./fx";
+import { db } from "../lib/db";
+import { fetchEodhdDividends, type DividendEvent } from "../integrations/eodhd-dividends";
+import { currencyToEurRate } from "../integrations/fx";
 import { marketauxLookupTicker, type Holding } from "./holdings";
 
 export interface DividendRow {

@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { db } from "../lib/db";
 import { refreshDividends } from "./dividends";
 import { refreshEarnings } from "./earnings";
 import type { Holding } from "./holdings";

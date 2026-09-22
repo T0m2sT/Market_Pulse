@@ -1,5 +1,5 @@
-import { fetchPortfolio, stripTickerSuffix, type T212Position } from "./trading212";
-import { fetchCompanyProfile } from "./finnhub";
+import { fetchPortfolio, stripTickerSuffix, type T212Position } from "../integrations/trading212";
+import { fetchCompanyProfile } from "../integrations/finnhub";
 
 export const SECTORS = [
   "Energy",

@@ -1,6 +1,6 @@
-import { db } from "./db";
-import { fetchNewsForTicker, type MarketauxArticle } from "./marketaux";
-import { isoWeekBounds } from "./iso-week";
+import { db } from "../lib/db";
+import { fetchNewsForTicker, type MarketauxArticle } from "../integrations/marketaux";
+import { isoWeekBounds } from "../lib/iso-week";
 import { marketauxLookupTicker, type Holding } from "./holdings";
 
 const HAIKU = "claude-haiku-4-5-20251001";

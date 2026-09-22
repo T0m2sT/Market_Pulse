@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "portfolio-news",
-  "main": "src/index.ts",
+  "main": "src/routes/index.ts",
   "compatibility_date": "2026-08-01",
   "observability": {
     "enabled": true

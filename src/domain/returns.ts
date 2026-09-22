@@ -1,5 +1,5 @@
 import type { Holding, Sector } from "./holdings";
-import { usdToEurRate } from "./fx";
+import { usdToEurRate } from "../integrations/fx";
 
 export interface PositionReturn {
   ticker: string;
