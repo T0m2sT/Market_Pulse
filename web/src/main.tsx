@@ -4,10 +4,13 @@ import { registerSW } from 'virtual:pwa-register'
 import './index.css'
 import App from './App.tsx'
 
-// New deploys otherwise sit installed-but-inactive until the user manually reloads twice;
-// reload as soon as the new service worker takes over so a fresh deploy always shows up.
-const updateSW = registerSW({ onNeedRefresh: () => updateSW(true) })
-setInterval(() => updateSW(), 60 * 1000)
+// autoUpdate mode reloads once a new service worker activates, but the browser only looks for one
+// on launch/navigation; poll so an open (or installed) app picks up a fresh deploy within a minute.
+registerSW({
+  onRegisteredSW: (_url, registration) => {
+    if (registration) setInterval(() => registration.update(), 60 * 1000)
+  },
+})
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

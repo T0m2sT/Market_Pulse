@@ -49,6 +49,7 @@ export default function News() {
     const weightOf = (t: string) => holdingByTicker.get(t)?.weight ?? 0;
     const rows = doc.briefings.filter((b) => {
       if (b.weekStart !== activeWeek) return false;
+      if (b.articleCount === 0 && !isAll) return false; // quiet rows have no sentiment/seen state to filter on
       if (tickerFilter && !b.ticker.toLowerCase().includes(tickerFilter.toLowerCase())) return false;
       if (sentimentMode === "positive" && b.sentiment < 0) return false;
       if (sentimentMode === "negative" && b.sentiment >= 0) return false;
@@ -57,15 +58,16 @@ export default function News() {
       return true;
     });
     return rows.sort((a, z) => {
-      if (a.articleCount === 0 && z.articleCount === 0) return a.ticker.localeCompare(z.ticker);
-      if (a.articleCount === 0) return 1; // quiet rows always sink to the bottom
-      if (z.articleCount === 0) return -1;
+      // Fresh briefings first, then copies carried from earlier weeks, then quiet rows.
+      const tier = (b: typeof a) => (b.articleCount === 0 ? 2 : b.carriedFrom ? 1 : 0);
+      if (tier(a) !== tier(z)) return tier(a) - tier(z);
+      if (tier(a) === 2) return a.ticker.localeCompare(z.ticker);
       if (sort === "ticker") return a.ticker.localeCompare(z.ticker);
       if (sort === "weight") return weightOf(z.ticker) - weightOf(a.ticker);
       return Math.abs(z.sentiment) - Math.abs(a.sentiment);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doc, holdings, activeWeek, tickerFilter, seenMode, sentimentMode, sort]);
+  }, [doc, holdings, activeWeek, tickerFilter, seenMode, sentimentMode, isAll, sort]);
 
   if (error) return <p style={{ color: "var(--negative)" }}>{error}</p>;
   if (!doc) return <p style={{ color: "var(--text-tertiary)" }}>Loading…</p>;
@@ -105,7 +107,7 @@ export default function News() {
           style={{
             flex: 1,
             padding: "var(--space-2)",
-            background: !isAll ? "var(--accent-dim)" : "var(--bg-elevated-1)",
+            background: seenMode !== "off" ? "var(--accent-dim)" : "var(--bg-elevated-1)",
             textTransform: "capitalize",
             fontWeight: 400,
           }}
@@ -117,7 +119,7 @@ export default function News() {
           style={{
             flex: 1,
             padding: "var(--space-2)",
-            background: !isAll ? "var(--accent-dim)" : "var(--bg-elevated-1)",
+            background: sentimentMode !== "off" ? "var(--accent-dim)" : "var(--bg-elevated-1)",
             textTransform: "capitalize",
             fontWeight: 400,
           }}
