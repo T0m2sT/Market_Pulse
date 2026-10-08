@@ -30,3 +30,9 @@ export function fiscalQuarterLabel(period: string): string {
   if (!year || !month) return period;
   return `Q${Math.ceil(month / 3)} ${year}`;
 }
+
+/** "from last week" / "from 3 weeks ago" for a briefing copied forward from `carriedFrom` into `weekStart`. */
+export function carriedLabel(carriedFrom: string, weekStart: string): string {
+  const weeks = Math.round((Date.parse(weekStart) - Date.parse(carriedFrom)) / (7 * 86400000));
+  return weeks <= 1 ? "from last week" : `from ${weeks} weeks ago`;
+}

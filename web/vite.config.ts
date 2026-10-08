@@ -8,6 +8,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      injectRegister: null,
       manifest: {
         name: 'Market Pulse',
         short_name: 'Market Pulse',

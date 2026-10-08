@@ -72,6 +72,7 @@ export interface Briefing {
   sentiment: number;
   articleCount: number;
   seen: boolean;
+  carriedFrom: string | null;
 }
 
 export interface NewsDoc {

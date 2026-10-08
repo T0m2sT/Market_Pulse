@@ -115,7 +115,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
       const weight = new Map(holdings.positions.map((p) => [p.ticker, p.weight]));
       const latestWeek = doc.briefings[0]?.weekStart;
       const top = doc.briefings
-        .filter((b) => b.weekStart === latestWeek && b.articleCount > 0)
+        .filter((b) => b.weekStart === latestWeek && b.articleCount > 0 && !b.carriedFrom)
         .map((b) => ({ b, score: Math.abs(b.sentiment) * Math.sqrt(weight.get(b.ticker) ?? 0) }))
         .sort((a, z) => z.score - a.score)
         .slice(0, 3)
@@ -148,7 +148,8 @@ async function handle(request: Request, env: Env): Promise<Response> {
 
     if (url.pathname === "/api/admin/briefings" && request.method === "POST") {
       const holdings = await getHoldings(env.PORTFOLIO_KV);
-      await refreshBriefings(env.DB, env.ANTHROPIC_API_KEY, holdings.positions);
+      const week = url.searchParams.get("week") ?? undefined;
+      await refreshBriefings(env.DB, env.ANTHROPIC_API_KEY, holdings.positions, week);
       const doc = await getBriefings(env.DB);
       return Response.json({ status: "ok", briefings: doc.briefings.length });
     }
@@ -167,10 +168,13 @@ export default {
     // the standard "1-5" silently skipped Friday and fired Sun-Thu instead).
     //
     // Workers FREE tier: max 5 cron triggers per account, 50 subrequests per invocation.
-    //  "5 6 * * *"                daily: earnings calendar sync + dividends + up to 8 weekly briefings
+    //  "5 6 * * *"                daily: earnings calendar sync + up to 8 weekly briefings (missing ones copied from last week)
     //                             (briefings are guarded to companies with news that week and no
     //                             briefing row yet — a full week drains over ~2 daily runs, keeping
     //                             any one invocation's Claude-call count bounded)
+    //  "10 6 * * *"               daily: dividends from EODHD, a rotating slice of 15 holdings per day
+    //                             (free tier is 20 req/day). Own invocation so its fetches don't
+    //                             eat the earnings/briefings cron's subrequest budget
     //  "* 13-19 * * 2-6"          returns snapshot, every minute, regular market hours (9:30am-4pm ET)
     //  "*/5 0-12,20-23 * * 2-6"   returns snapshot, every 5 min, overnight + pre/post market
     //                             (both fetch live T212 prices but do NOT write the holdings doc —
@@ -179,8 +183,13 @@ export default {
     if (event.cron === "5 6 * * *") {
       const holdings = await getHoldings(env.PORTFOLIO_KV);
       await refreshEarnings(env.DB, env.FINNHUB_API_KEY, holdings.positions, env.ANTHROPIC_API_KEY);
-      await refreshDividends(env.DB, env.EODHD_API_KEY, holdings.positions);
       await refreshBriefings(env.DB, env.ANTHROPIC_API_KEY, holdings.positions);
+      return;
+    }
+
+    if (event.cron === "10 6 * * *") {
+      const holdings = await getHoldings(env.PORTFOLIO_KV);
+      await refreshDividends(env.DB, env.EODHD_API_KEY, holdings.positions);
       return;
     }
 

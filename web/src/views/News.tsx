@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import type { NewsDoc, HoldingsDoc } from "../api/types";
 import { Card, Freshness, FilterMenu } from "../components/Card";
+import { carriedLabel } from "../format";
 import { Button } from "../components/Button";
 import { Input } from "../components/Input";
 import { TickerAvatar } from "../components/TickerAvatar";
@@ -20,9 +21,11 @@ export default function News() {
   const [holdings, setHoldings] = useState<HoldingsDoc | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tickerFilter, setTickerFilter] = useState("");
-  const [sentimentFilter, setSentimentFilter] = useState<"all" | "positive" | "negative">("all");
-  const [seenFilter, setSeenFilter] = useState<"all" | "unseen">("all");
+  const [seenMode, setSeenMode] = useState<"off" | "seen" | "unseen">("off");
+  const [sentimentMode, setSentimentMode] = useState<"off" | "positive" | "negative">("off");
+  const isAll = seenMode === "off" && sentimentMode === "off";
   const [sort, setSort] = useState<SortMode>("movers");
+  const [weekIndex, setWeekIndex] = useState(0); // 0 = newest week
 
   useEffect(() => {
     api
@@ -34,39 +37,38 @@ export default function News() {
 
   const holdingByTicker = new Map((holdings?.positions ?? []).map((p) => [p.ticker, p]));
 
-  const filtered = useMemo(() => {
+  // Every week that has any briefing row at all, newest first.
+  const weeks = useMemo(() => {
     if (!doc) return [];
+    return [...new Set(doc.briefings.map((b) => b.weekStart))].sort((a, z) => z.localeCompare(a));
+  }, [doc]);
+  const activeWeek = weeks[weekIndex];
+
+  const filtered = useMemo(() => {
+    if (!doc || activeWeek === undefined) return [];
     const weightOf = (t: string) => holdingByTicker.get(t)?.weight ?? 0;
     const rows = doc.briefings.filter((b) => {
-      if (b.articleCount === 0) return false; // quiet "no news this week" rows aren't shown
+      if (b.weekStart !== activeWeek) return false;
       if (tickerFilter && !b.ticker.toLowerCase().includes(tickerFilter.toLowerCase())) return false;
-      if (sentimentFilter === "positive" && b.sentiment < 0) return false;
-      if (sentimentFilter === "negative" && b.sentiment >= 0) return false;
-      if (seenFilter === "unseen" && b.seen) return false;
+      if (sentimentMode === "positive" && b.sentiment < 0) return false;
+      if (sentimentMode === "negative" && b.sentiment >= 0) return false;
+      if (seenMode === "unseen" && b.seen) return false;
+      if (seenMode === "seen" && !b.seen) return false;
       return true;
     });
-    // Always newest week first; sort within a week by the chosen mode.
     return rows.sort((a, z) => {
-      if (a.weekStart !== z.weekStart) return z.weekStart.localeCompare(a.weekStart);
+      if (a.articleCount === 0 && z.articleCount === 0) return a.ticker.localeCompare(z.ticker);
+      if (a.articleCount === 0) return 1; // quiet rows always sink to the bottom
+      if (z.articleCount === 0) return -1;
       if (sort === "ticker") return a.ticker.localeCompare(z.ticker);
       if (sort === "weight") return weightOf(z.ticker) - weightOf(a.ticker);
       return Math.abs(z.sentiment) - Math.abs(a.sentiment);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doc, holdings, tickerFilter, sentimentFilter, seenFilter, sort]);
+  }, [doc, holdings, activeWeek, tickerFilter, seenMode, sentimentMode, sort]);
 
   if (error) return <p style={{ color: "var(--negative)" }}>{error}</p>;
   if (!doc) return <p style={{ color: "var(--text-tertiary)" }}>Loading…</p>;
-
-  // First briefing of each week gets the "Week of …" header above it.
-  const weekHeaderFor = new Set<string>();
-  const seenWeeks = new Set<string>();
-  for (const b of filtered) {
-    if (!seenWeeks.has(b.weekStart)) {
-      seenWeeks.add(b.weekStart);
-      weekHeaderFor.add(`${b.ticker}:${b.weekStart}`);
-    }
-  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
@@ -83,108 +85,175 @@ export default function News() {
       />
 
       <div style={{ display: "flex", gap: "var(--space-2)" }}>
-        {(["all", "positive", "negative"] as const).map((s) => (
-          <Button
-            key={s}
-            onClick={() => setSentimentFilter(s)}
-            style={{
-              flex: 1,
-              padding: "var(--space-2)",
-              background: sentimentFilter === s ? "var(--accent-dim)" : "var(--bg-elevated-1)",
-              textTransform: "capitalize",
-              fontWeight: 400,
-            }}
-          >
-            {s}
-          </Button>
-        ))}
+        <Button
+          onClick={() => {
+            setSeenMode("off");
+            setSentimentMode("off");
+          }}
+          style={{
+            flex: 1,
+            padding: "var(--space-2)",
+            background: isAll ? "var(--accent-dim)" : "var(--bg-elevated-1)",
+            textTransform: "capitalize",
+            fontWeight: 400,
+          }}
+        >
+          All
+        </Button>
+        <Button
+          onClick={() => setSeenMode((m) => (m === "unseen" ? "seen" : "unseen"))}
+          style={{
+            flex: 1,
+            padding: "var(--space-2)",
+            background: !isAll ? "var(--accent-dim)" : "var(--bg-elevated-1)",
+            textTransform: "capitalize",
+            fontWeight: 400,
+          }}
+        >
+          {seenMode === "seen" ? "Seen" : "Unseen"}
+        </Button>
+        <Button
+          onClick={() => setSentimentMode((m) => (m === "positive" ? "negative" : "positive"))}
+          style={{
+            flex: 1,
+            padding: "var(--space-2)",
+            background: !isAll ? "var(--accent-dim)" : "var(--bg-elevated-1)",
+            textTransform: "capitalize",
+            fontWeight: 400,
+          }}
+        >
+          {sentimentMode === "negative" ? "Negative" : "Positive"}
+        </Button>
       </div>
 
-      <div style={{ display: "flex", gap: "var(--space-2)" }}>
-        {(["all", "unseen"] as const).map((s) => (
-          <Button
-            key={s}
-            onClick={() => setSeenFilter(s)}
-            style={{
-              flex: 1,
-              padding: "var(--space-2)",
-              background: seenFilter === s ? "var(--accent-dim)" : "var(--bg-elevated-1)",
-              textTransform: "capitalize",
-              fontWeight: 400,
-            }}
-          >
-            {s}
-          </Button>
-        ))}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <button
+          onClick={() => setWeekIndex((i) => Math.min(i + 1, weeks.length - 1))}
+          disabled={weekIndex >= weeks.length - 1}
+          aria-label="Previous week"
+          style={{
+            flexShrink: 0,
+            width: 32,
+            height: 32,
+            background: "none",
+            border: "none",
+            fontSize: 18,
+            lineHeight: 1,
+            padding: 0,
+            cursor: weekIndex >= weeks.length - 1 ? "default" : "pointer",
+            color: weekIndex >= weeks.length - 1 ? "var(--text-tertiary)" : "var(--text-primary)",
+            opacity: weekIndex >= weeks.length - 1 ? 0.35 : 1,
+          }}
+        >
+          &lt;
+        </button>
+        <h3 style={{ margin: 0, color: "var(--text-secondary)" }}>
+          {activeWeek
+            ? `Week of ${new Date(activeWeek + "T00:00:00").toLocaleDateString(undefined, {
+                month: "long",
+                day: "numeric",
+              })}`
+            : ""}
+        </h3>
+        <button
+          onClick={() => setWeekIndex((i) => Math.max(i - 1, 0))}
+          disabled={weekIndex <= 0}
+          aria-label="Next week"
+          style={{
+            flexShrink: 0,
+            width: 32,
+            height: 32,
+            background: "none",
+            border: "none",
+            fontSize: 18,
+            lineHeight: 1,
+            padding: 0,
+            cursor: weekIndex <= 0 ? "default" : "pointer",
+            color: weekIndex <= 0 ? "var(--text-tertiary)" : "var(--text-primary)",
+            opacity: weekIndex <= 0 ? 0.35 : 1,
+          }}
+        >
+          &gt;
+        </button>
       </div>
 
       {filtered.length === 0 && <p style={{ color: "var(--text-tertiary)" }}>No briefings match.</p>}
 
       {filtered.map((b) => {
+        if (b.articleCount === 0) {
+          return (
+            <div
+              key={`${b.ticker}:${b.weekStart}`}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "var(--space-2)",
+                padding: "var(--space-2) var(--space-3)",
+              }}
+            >
+              <TickerAvatar ticker={b.ticker} logo={holdingByTicker.get(b.ticker)?.logo} size={18} />
+              <span style={{ fontWeight: 600, fontSize: 13, color: "var(--text-secondary)" }}>{b.ticker}</span>
+              <span style={{ fontSize: 12, color: "var(--text-tertiary)", marginLeft: "auto" }}>No update</span>
+            </div>
+          );
+        }
         const isPositive = b.sentiment >= 0;
-        const showWeekHeader = weekHeaderFor.has(`${b.ticker}:${b.weekStart}`);
         return (
-          <div key={`${b.ticker}:${b.weekStart}`}>
-            {showWeekHeader && (
-              <h3 style={{ margin: "var(--space-2) 0", color: "var(--text-secondary)" }}>
-                Week of{" "}
-                {new Date(b.weekStart + "T00:00:00").toLocaleDateString(undefined, {
-                  month: "long",
-                  day: "numeric",
-                })}
-              </h3>
-            )}
-            <Card>
-              <button
-                onClick={() => navigate(`/briefing/${b.ticker}/${b.weekStart}`)}
+          <Card key={`${b.ticker}:${b.weekStart}`}>
+            <button
+              onClick={() => navigate(`/briefing/${b.ticker}/${b.weekStart}`)}
+              style={{
+                display: "block",
+                width: "100%",
+                background: "none",
+                border: "none",
+                padding: 0,
+                textAlign: "left",
+                cursor: "pointer",
+              }}
+            >
+              <div
                 style={{
-                  display: "block",
-                  width: "100%",
-                  background: "none",
-                  border: "none",
-                  padding: 0,
-                  textAlign: "left",
-                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "var(--space-2)",
+                  marginBottom: "var(--space-2)",
                 }}
               >
-                <div
+                <TickerAvatar ticker={b.ticker} logo={holdingByTicker.get(b.ticker)?.logo} size={24} />
+                <span style={{ color: "var(--accent)", fontWeight: 600, fontSize: 13 }}>{b.ticker}</span>
+                <span
+                  className={`num ${isPositive ? "positive" : "negative"}`}
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "var(--space-2)",
-                    marginBottom: "var(--space-2)",
+                    fontSize: 11,
+                    padding: "2px 7px",
+                    borderRadius: 999,
+                    background: "var(--bg-elevated-2)",
                   }}
                 >
-                  <TickerAvatar ticker={b.ticker} logo={holdingByTicker.get(b.ticker)?.logo} size={24} />
-                  <span style={{ color: "var(--accent)", fontWeight: 600, fontSize: 13 }}>{b.ticker}</span>
-                  <span
-                    className={`num ${isPositive ? "positive" : "negative"}`}
-                    style={{
-                      fontSize: 11,
-                      padding: "2px 7px",
-                      borderRadius: 999,
-                      background: "var(--bg-elevated-2)",
-                    }}
-                  >
-                    {isPositive ? "+" : ""}
-                    {b.sentiment.toFixed(2)}
+                  {isPositive ? "+" : ""}
+                  {b.sentiment.toFixed(2)}
+                </span>
+                {b.carriedFrom && (
+                  <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>
+                    {carriedLabel(b.carriedFrom, b.weekStart)}
                   </span>
-                  {!b.seen && (
-                    <span
-                      style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: 999,
-                        background: "var(--accent)",
-                        marginLeft: "auto",
-                      }}
-                    />
-                  )}
-                </div>
-                <p style={{ fontSize: 14, color: "var(--text-secondary)" }}>{b.summary}</p>
-              </button>
-            </Card>
-          </div>
+                )}
+                {!b.seen && (
+                  <span
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 999,
+                      background: "var(--accent)",
+                      marginLeft: "auto",
+                    }}
+                  />
+                )}
+              </div>
+              <p style={{ fontSize: 14, color: "var(--text-secondary)" }}>{b.summary}</p>
+            </button>
+          </Card>
         );
       })}
     </div>

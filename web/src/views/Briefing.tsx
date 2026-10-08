@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "../api/client";
+import { carriedLabel } from "../format";
 import type { NewsDoc, Briefing as BriefingType } from "../api/types";
 
 export default function Briefing() {
@@ -42,6 +43,12 @@ export default function Briefing() {
           {briefing.articleCount} {briefing.articleCount === 1 ? "article" : "articles"}
         </span>
       </div>
+
+      {briefing.carriedFrom && (
+        <p style={{ fontSize: 13, color: "var(--text-tertiary)", margin: 0 }}>
+          No new news this week. This is the briefing {carriedLabel(briefing.carriedFrom, briefing.weekStart)}.
+        </p>
+      )}
 
       <h1 style={{ fontSize: 20, lineHeight: 1.4 }}>{briefing.summary}</h1>
 

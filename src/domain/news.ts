@@ -18,6 +18,8 @@ export interface Briefing {
   sentiment: number;
   articleCount: number;
   seen: boolean;
+  /** week_start of the original briefing this row was copied from (no new news that week), else null. */
+  carriedFrom: string | null;
 }
 
 function daysAgo(n: number): string {
@@ -67,6 +69,7 @@ export async function getBriefings(d1: D1Database): Promise<NewsDoc> {
     sentiment: number;
     article_count: number;
     seen: number;
+    carried_from: string | null;
     created_at: string;
   }>(d1, `SELECT * FROM news_briefings ORDER BY week_start DESC, ABS(sentiment) DESC`);
   const updatedAt = rows[0]?.created_at ?? new Date(0).toISOString();
@@ -80,6 +83,7 @@ export async function getBriefings(d1: D1Database): Promise<NewsDoc> {
       sentiment: r.sentiment,
       articleCount: r.article_count,
       seen: r.seen === 1,
+      carriedFrom: r.carried_from,
     })),
   };
 }
@@ -212,22 +216,26 @@ export async function refreshBriefings(
   d1: D1Database,
   anthropicKey: string,
   holdings: Holding[],
+  targetWeekStart?: string,
 ): Promise<void> {
   // Runs from the daily 5:6 cron. "3 days ago" keeps us in the just-completed Mon-Sun week
   // through the first few days of the new week; after that we're briefing the current week as
   // it fills, which is fine (the row upserts). Generates at most MAX_BRIEFINGS_PER_RUN per run —
   // any company with news that week but no briefing yet is picked up on a subsequent daily run.
-  const { weekStart, weekEnd } = isoWeekBounds(daysAgo(3));
+  // targetWeekStart lets /api/admin/briefings reprocess a specific past week manually.
+  const { weekStart, weekEnd } = isoWeekBounds(targetWeekStart ?? daysAgo(3));
 
   const nameByTicker = new Map(holdings.map((h) => [h.ticker, h.name]));
 
-  // Companies with news this week that don't yet have a briefing row for it.
+  // Companies with news this week that don't yet have a REAL briefing row for it (no row, or only
+  // a quiet-week placeholder from a run where the Claude call failed or hadn't seen the news yet).
   const grouped = await db.all<{ ticker: string }>(
     d1,
     `SELECT DISTINCT a.ticker FROM news_articles a
       WHERE a.published_at >= ? AND a.published_at <= ?
         AND NOT EXISTS (
-          SELECT 1 FROM news_briefings b WHERE b.ticker = a.ticker AND b.week_start = ?
+          SELECT 1 FROM news_briefings b
+           WHERE b.ticker = a.ticker AND b.week_start = ? AND b.article_count > 0 AND b.carried_from IS NULL
         )`,
     weekStart,
     weekEnd + "T23:59:59Z",
@@ -278,6 +286,7 @@ export async function refreshBriefings(
          (ticker, week_start, summary, body, sentiment, article_count, seen, created_at)
        VALUES (?, ?, ?, ?, ?, ?, 0, ?)
        ON CONFLICT (ticker, week_start) DO UPDATE SET
+         carried_from = NULL, seen = 0,
          summary = excluded.summary, body = excluded.body,
          sentiment = excluded.sentiment, article_count = excluded.article_count,
          created_at = excluded.created_at`,
@@ -292,19 +301,54 @@ export async function refreshBriefings(
     made++;
   }
 
-  // Every holding without a briefing row for this week gets a canned "quiet week" row — no Claude
-  // call. ON CONFLICT DO NOTHING means a real briefing generated above (or on an earlier run) is
-  // never clobbered. Runs regardless of MAX_BRIEFINGS_PER_RUN since it's a plain insert.
-  // ponytail: one batch, fine for <=100 holdings; chunk into 50s if the portfolio ever exceeds that.
+  // Holdings still without a row for this week: copy their latest earlier briefing forward (no
+  // Claude call), remembering the original week in carried_from so the UI can say how old it is.
+  // No earlier briefing at all -> canned quiet row. A copy only overwrites an old quiet placeholder
+  // (article_count = 0), never a real briefing or another copy; a later real one replaces the
+  // copy via the upsert above.
   const now = new Date().toISOString();
-  const quietStatements: [string, unknown[]][] = holdings.map((h) => [
-    `INSERT INTO news_briefings
-       (ticker, week_start, summary, body, sentiment, article_count, seen, created_at)
-     VALUES (?, ?, ?, ?, 0, 0, 0, ?)
-     ON CONFLICT (ticker, week_start) DO NOTHING`,
-    [h.ticker, weekStart, QUIET_SUMMARY, QUIET_BODY, now],
-  ]);
-  await db.batch(d1, quietStatements);
+  const prior = await db.all<{
+    ticker: string;
+    week_start: string;
+    summary: string;
+    body: string;
+    sentiment: number;
+    article_count: number;
+    carried_from: string | null;
+  }>(
+    d1,
+    `SELECT b.* FROM news_briefings b
+      WHERE b.week_start < ? AND b.article_count > 0
+        AND b.week_start = (SELECT MAX(week_start) FROM news_briefings
+                             WHERE ticker = b.ticker AND week_start < ? AND article_count > 0)`,
+    weekStart,
+    weekStart,
+  );
+  const priorByTicker = new Map(prior.map((p) => [p.ticker, p]));
+  // ponytail: one batch, fine for <=100 holdings; chunk into 50s if the portfolio ever exceeds that.
+  const fillStatements: [string, unknown[]][] = holdings.map((h) => {
+    const p = priorByTicker.get(h.ticker);
+    return p
+      ? [
+          `INSERT INTO news_briefings
+             (ticker, week_start, summary, body, sentiment, article_count, seen, carried_from, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+           ON CONFLICT (ticker, week_start) DO UPDATE SET
+             summary = excluded.summary, body = excluded.body, sentiment = excluded.sentiment,
+             article_count = excluded.article_count, seen = 1, carried_from = excluded.carried_from,
+             created_at = excluded.created_at
+           WHERE news_briefings.article_count = 0`,
+          [h.ticker, weekStart, p.summary, p.body, p.sentiment, p.article_count, p.carried_from ?? p.week_start, now],
+        ]
+      : [
+          `INSERT INTO news_briefings
+             (ticker, week_start, summary, body, sentiment, article_count, seen, created_at)
+           VALUES (?, ?, ?, ?, 0, 0, 0, ?)
+           ON CONFLICT (ticker, week_start) DO NOTHING`,
+          [h.ticker, weekStart, QUIET_SUMMARY, QUIET_BODY, now],
+        ];
+  });
+  await db.batch(d1, fillStatements);
 
   await db.run(d1, `DELETE FROM news_briefings WHERE week_start < ?`, weeksAgo(BRIEFING_RETENTION_WEEKS));
 }

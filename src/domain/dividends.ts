@@ -24,6 +24,8 @@ export interface Dividend extends DividendRow {
 
 const EARLIEST_EX_DATE = "2026-08-01";
 const RETENTION_DAYS = 60;
+/** Holdings fetched per run; under EODHD's free 20/day with headroom for manual admin runs. */
+const DAILY_FETCH_LIMIT = 15;
 
 /** US/EU tax-treaty withholding rate on US-sourced dividends — brokers (T212 included) pay out
  * net of this, but EODHD's `value` is gross. Applied only to USD dividends; other currencies
@@ -167,13 +169,37 @@ export async function refreshDividends(
     return fxCache.get(currency) ?? null;
   }
 
-  for (const h of holdings) {
-    if (h.isManual) continue;
+  // One read for every stored row (instead of one SELECT per event) and one batched write at the
+  // end keep this under the Workers free-tier 50-subrequest cap.
+  const priors = new Map(
+    (
+      await db.all<PriorRow & { ticker: string; ex_date: string }>(
+        d1,
+        `SELECT ticker, ex_date, per_share_eur, qualifying_shares, yield_pct, locked FROM dividends`,
+      )
+    ).map((r) => [`${r.ticker}|${r.ex_date}`, r]),
+  );
+  const writes: [string, unknown[]][] = [];
 
+  // EODHD free tier is 20 requests/day, so each daily run refreshes a rotating slice of holdings
+  // (a different slice per day, wrapping) instead of all of them. Holdings with no stored dividend
+  // (non-payers, or payers between retention expiry and their next declaration) are only checked
+  // once a week, first in line that day, so a company that starts paying is still picked up.
+  const day = Math.floor(Date.now() / 86_400_000);
+  const payerTickers = new Set([...priors.values()].map((r) => r.ticker));
+  const byTicker = holdings.filter((h) => !h.isManual).sort((a, b) => a.ticker.localeCompare(b.ticker));
+  const payers = byTicker.filter((h) => payerTickers.has(h.ticker));
+  const others = day % 7 === 0 ? byTicker.filter((h) => !payerTickers.has(h.ticker)) : [];
+  const start = (day * DAILY_FETCH_LIMIT) % Math.max(payers.length, 1);
+  const rotated = payers.map((_, i) => payers[(start + i) % payers.length]);
+  const todays = [...others, ...rotated].slice(0, DAILY_FETCH_LIMIT);
+
+  for (const h of todays) {
     let events: DividendEvent[];
     try {
       events = await fetchEodhdDividends(eodhdKey, marketauxLookupTicker(h));
-    } catch {
+    } catch (err) {
+      console.error(`EODHD dividends failed for ${h.ticker}:`, err);
       continue; // provider hiccup — keep this ticker's existing rows untouched
     }
     if (events.length === 0) continue;
@@ -187,12 +213,7 @@ export async function refreshDividends(
       const rate = await fx(ev.currency);
       if (rate === null) continue;
 
-      const prior = await db.first<PriorRow>(
-        d1,
-        `SELECT per_share_eur, qualifying_shares, yield_pct, locked FROM dividends WHERE ticker = ? AND ex_date = ?`,
-        h.ticker,
-        ev.exDate,
-      );
+      const prior = priors.get(`${h.ticker}|${ev.exDate}`) ?? null;
 
       const row = resolveDividendRow(
         {
@@ -210,8 +231,7 @@ export async function refreshDividends(
         prior,
       );
 
-      await db.run(
-        d1,
+      writes.push([
         `INSERT INTO dividends
            (ticker, ex_date, payment_date, per_share_usd, per_share_eur, qualifying_shares, amount_eur, yield_pct, locked, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -224,6 +244,7 @@ export async function refreshDividends(
            yield_pct = excluded.yield_pct,
            locked = excluded.locked,
            updated_at = excluded.updated_at`,
+        [
         row.ticker,
         row.ex_date,
         row.payment_date,
@@ -234,9 +255,13 @@ export async function refreshDividends(
         row.yield_pct,
         row.locked,
         new Date().toISOString(),
-      );
+        ],
+      ]);
     }
   }
+
+  // D1 caps a batch at 100 statements.
+  for (let i = 0; i < writes.length; i += 50) await db.batch(d1, writes.slice(i, i + 50));
 
   await db.run(
     d1,
