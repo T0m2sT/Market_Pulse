@@ -42,10 +42,10 @@ export function shouldGenerateBriefings(
   return latestBriefingWeekStart !== justCompletedWeekStart;
 }
 
-/** Max Claude briefing calls per cron invocation — bounds the daily 5:6 cron's subrequest count
+/** Max Claude briefing calls per cron invocation — bounds the 20:00 ingest cron's subrequest count
  *  on the Workers Free tier (50/invocation). Any not covered today are picked up on the next
  *  daily run, so a full week of ~20 companies is briefed within ~2 days. */
-const MAX_BRIEFINGS_PER_RUN = 8;
+const MAX_BRIEFINGS_PER_RUN = 4;
 
 /** Canned briefing for a holding with no news that week — inserted without a Claude call so every
  *  stock has a row. article_count 0 is the "quiet week" marker the frontend greys out. */
@@ -198,7 +198,10 @@ async function generateBriefing(
       messages: [{ role: "user", content: userContent }],
     }),
   });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    console.error(`briefing ${ticker}: Anthropic ${res.status} ${(await res.text()).slice(0, 300)}`);
+    return null;
+  }
   try {
     const data = (await res.json()) as { content: { type: string; text?: string }[] };
     const text = data.content.find((c) => c.type === "text")?.text ?? "";
@@ -207,7 +210,8 @@ async function generateBriefing(
     const parsed = JSON.parse(m[0]) as BriefingResult;
     if (typeof parsed.summary !== "string" || typeof parsed.body !== "string") return null;
     return parsed;
-  } catch {
+  } catch (e) {
+    console.error(`briefing ${ticker}: bad response`, e);
     return null;
   }
 }
@@ -275,7 +279,8 @@ export async function refreshBriefings(
           sentiment: a.sentiment,
         })),
       );
-    } catch {
+    } catch (e) {
+      console.error(`briefing ${ticker}: fetch failed`, e);
       briefing = null; // one ticker's Claude call failing shouldn't drop the rest of the batch
     }
     if (!briefing) continue;

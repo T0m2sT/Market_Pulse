@@ -168,7 +168,7 @@ export default {
     // the standard "1-5" silently skipped Friday and fired Sun-Thu instead).
     //
     // Workers FREE tier: max 5 cron triggers per account, 50 subrequests per invocation.
-    //  "5 6 * * *"                daily: earnings calendar sync + up to 8 weekly briefings (missing ones copied from last week)
+    //  "5 6 * * *"                daily: earnings calendar sync only
     //                             (briefings are guarded to companies with news that week and no
     //                             briefing row yet — a full week drains over ~2 daily runs, keeping
     //                             any one invocation's Claude-call count bounded)
@@ -179,11 +179,10 @@ export default {
     //  "*/5 0-12,20-23 * * 2-6"   returns snapshot, every 5 min, overnight + pre/post market
     //                             (both fetch live T212 prices but do NOT write the holdings doc —
     //                             holdings only change on a manual sync — so each tick is 1 KV write)
-    //  "0 6,13,20 * * *"          news article ingest to D1, 3x/day (~25 Marketaux calls/cycle)
+    //  "0 6,13,20 * * *"          news article ingest to D1, 3x/day (~25 Marketaux calls/cycle); the 20:00 run also generates up to 4 weekly briefings
     if (event.cron === "5 6 * * *") {
       const holdings = await getHoldings(env.PORTFOLIO_KV);
       await refreshEarnings(env.DB, env.FINNHUB_API_KEY, holdings.positions, env.ANTHROPIC_API_KEY);
-      await refreshBriefings(env.DB, env.ANTHROPIC_API_KEY, holdings.positions);
       return;
     }
 
@@ -196,6 +195,10 @@ export default {
     if (event.cron === "0 6,13,20 * * *") {
       const holdings = await getHoldings(env.PORTFOLIO_KV);
       await refreshArticles(env.DB, env.MARKETAUX_API_KEY, holdings.positions);
+      // Briefings ride the 20:00 run only: the 06:05 earnings cron exhausts the free-tier subrequest budget.
+      if (new Date(event.scheduledTime).getUTCHours() === 20) {
+        await refreshBriefings(env.DB, env.ANTHROPIC_API_KEY, holdings.positions);
+      }
       return;
     }
 
