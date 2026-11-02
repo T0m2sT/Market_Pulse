@@ -3,7 +3,7 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Authorization, Content-Type",
 };
 
-/** Echoes the request's Origin — the API still requires the bearer token, so this doesn't loosen access. */
+/** Echoes the request's Origin - the API still requires the bearer token, so this doesn't loosen access. */
 export function corsHeaders(request: Request): Record<string, string> {
   const origin = request.headers.get("Origin");
   return origin ? { ...CORS_HEADERS, "Access-Control-Allow-Origin": origin } : {};

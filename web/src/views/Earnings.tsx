@@ -56,7 +56,7 @@ function ResultBody({ r }: { r: EarningsResult }) {
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
       <ResultRow
         label="EPS"
-        value={r.eps !== null ? usd(r.eps) : "—"}
+        value={r.eps !== null ? usd(r.eps) : "-"}
         est={r.epsEstimate !== null ? usd(r.epsEstimate) : null}
         good={epsBeat}
         hasCompare={r.eps !== null && r.epsEstimate !== null}
@@ -287,7 +287,7 @@ export default function Earnings() {
                     </div>
                     <div style={{ display: "flex", gap: "var(--space-2)", marginTop: 2 }}>
                       <span className="num" style={{ fontSize: 13 }}>
-                        {r.eps !== null ? usd(r.eps) : "—"}
+                        {r.eps !== null ? usd(r.eps) : "-"}
                       </span>
                       {r.epsEstimate !== null && (
                         <span className="num" style={{ fontSize: 11, color: "var(--text-tertiary)" }}>

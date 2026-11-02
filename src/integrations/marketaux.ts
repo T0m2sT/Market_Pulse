@@ -18,7 +18,7 @@ export interface MarketauxArticle {
  * Marketaux's free tier caps every response at 3 articles no matter what `limit` is set to
  * (confirmed empirically: x-usagelimit-limit is 100/day, x-ratelimit-limit is 30/min).
  * A single batched symbols= call for many tickers therefore returns only 3 articles
- * total, mostly missing whichever tickers aren't in that day's global top 3 — so this
+ * total, mostly missing whichever tickers aren't in that day's global top 3 - so this
  * fetches per ticker instead, one call each, to actually guarantee coverage.
  */
 export async function fetchNewsForTicker(token: string, symbol: string): Promise<MarketauxArticle[]> {

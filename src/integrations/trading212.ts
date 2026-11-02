@@ -11,7 +11,7 @@ const LSE_TICKER = /l_EQ$/;
 
 export function stripTickerSuffix(t212Ticker: string): string {
   if (LSE_TICKER.test(t212Ticker)) {
-    // T212 encodes LSE tickers as e.g. "KAPl_EQ" for "KAP.L" — no exchange code,
+    // T212 encodes LSE tickers as e.g. "KAPl_EQ" for "KAP.L" - no exchange code,
     // trailing "l" standing in for the dot.
     return `${t212Ticker.slice(0, -"l_EQ".length)}.L`;
   }

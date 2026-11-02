@@ -49,7 +49,7 @@ export function TickerAvatar({
           background: "var(--bg-elevated-2)",
         }}
         onError={(e) => {
-          // Logo failed to load — swap the <img> for the initials fallback in place.
+          // Logo failed to load - swap the <img> for the initials fallback in place.
           const el = e.currentTarget;
           const fallback = document.createElement("div");
           fallback.style.cssText = `width:${size}px;height:${size}px;min-width:${size}px;border-radius:50%;background:${avatarColor(ticker)};display:flex;align-items:center;justify-content:center;font-size:${size * 0.36}px;font-weight:700;color:var(--bg-base);letter-spacing:-0.02em`;

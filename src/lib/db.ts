@@ -1,5 +1,5 @@
 /**
- * Thin typed wrappers over the D1 binding. No ORM — each domain module writes its own SQL.
+ * Thin typed wrappers over the D1 binding. No ORM - each domain module writes its own SQL.
  * `bind(...)` params are positional `?` placeholders.
  */
 export const db = {

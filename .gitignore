@@ -12,3 +12,4 @@ dist/
 .impeccable/
 .superpowers/
 docs/superpowers/
+.playwright-mcp/

@@ -42,14 +42,14 @@ export function shouldGenerateBriefings(
   return latestBriefingWeekStart !== justCompletedWeekStart;
 }
 
-/** Max Claude briefing calls per cron invocation — bounds the 20:00 ingest cron's subrequest count
+/** Max Claude briefing calls per cron invocation - bounds the 20:00 ingest cron's subrequest count
  *  on the Workers Free tier (50/invocation). Any not covered today are picked up on the next
  *  daily run, so a full week of ~20 companies is briefed within ~2 days. */
 const MAX_BRIEFINGS_PER_RUN = 4;
 
-/** Canned briefing for a holding with no news that week — inserted without a Claude call so every
+/** Canned briefing for a holding with no news that week - inserted without a Claude call so every
  *  stock has a row. article_count 0 is the "quiet week" marker the frontend greys out. */
-const QUIET_SUMMARY = "No material news this week — no change from last week.";
+const QUIET_SUMMARY = "No material news this week - no change from last week.";
 const QUIET_BODY =
   "No news articles were published about this company this week.\n\nNothing has changed relative to last week's picture. This is a routine quiet week, not a signal in itself.";
 
@@ -150,7 +150,7 @@ export async function refreshArticles(
 
 const BRIEFING_SYSTEM_PROMPT = `You write a weekly briefing on what is going on with a single company, for someone who holds its stock and wants the picture without reading every article.
 You are given that week's news articles for the company (titles, descriptions, sources, sentiment scores).
-Write from ONLY those articles — do not invent facts not present in them.
+Write from ONLY those articles - do not invent facts not present in them.
 
 Respond with ONLY JSON, no prose: {"summary": "...", "body": "..."}
 
@@ -161,7 +161,7 @@ body: well-structured prose, 3 to 5 short paragraphs. Requirements:
 - Each paragraph is 2 to 4 sentences and covers one idea: what happened, why it matters to a shareholder, or the overall tone.
 - Open with the most material development. Put context and secondary items after.
 - Where you cite a concrete number, keep it exact (e.g. "revenue up 12%", "down 4.5% on the week").
-- Plain readable English. No markdown, no headings, no bullet points, no bold/italic markers — just clean paragraphs separated by blank lines.`;
+- Plain readable English. No markdown, no headings, no bullet points, no bold/italic markers - just clean paragraphs separated by blank lines.`;
 
 interface BriefingResult {
   summary: string;
@@ -224,7 +224,7 @@ export async function refreshBriefings(
 ): Promise<void> {
   // Runs from the daily 5:6 cron. "3 days ago" keeps us in the just-completed Mon-Sun week
   // through the first few days of the new week; after that we're briefing the current week as
-  // it fills, which is fine (the row upserts). Generates at most MAX_BRIEFINGS_PER_RUN per run —
+  // it fills, which is fine (the row upserts). Generates at most MAX_BRIEFINGS_PER_RUN per run -
   // any company with news that week but no briefing yet is picked up on a subsequent daily run.
   // targetWeekStart lets /api/admin/briefings reprocess a specific past week manually.
   const { weekStart, weekEnd } = isoWeekBounds(targetWeekStart ?? daysAgo(3));

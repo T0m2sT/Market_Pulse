@@ -97,9 +97,9 @@ export function shouldRefreshWebEarnings(prior: WebEarningsDoc | null): boolean 
     const daysUntilNext =
       (new Date(prior.next.date + "T00:00:00Z").getTime() - Date.now()) / (1000 * 60 * 60 * 24);
     if (daysUntilNext <= 7 && daysUntilNext >= -1) {
-      return daysSinceCheck >= 1; // earnings week — check daily
+      return daysSinceCheck >= 1; // earnings week - check daily
     }
   }
 
-  return daysSinceCheck >= 7; // otherwise — check weekly
+  return daysSinceCheck >= 7; // otherwise - check weekly
 }

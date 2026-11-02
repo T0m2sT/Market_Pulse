@@ -8,7 +8,7 @@ describe("paymentsPerYear", () => {
       { date: "2026-05-15" },
       { date: "2026-02-15" },
       { date: "2025-11-15" },
-      { date: "2025-08-15" }, // exactly 365d before newest — the prior year's Q, excluded
+      { date: "2025-08-15" }, // exactly 365d before newest - the prior year's Q, excluded
       { date: "2025-05-15" }, // older, excluded
     ];
     expect(paymentsPerYear(history)).toBe(4);
@@ -76,7 +76,7 @@ describe("resolveDividendRow", () => {
     expect(row.per_share_eur).toBe(1.4);
   });
 
-  it("locked with no prior row (ex-date passed before first sync) falls back to today's rate and qty — best effort", () => {
+  it("locked with no prior row (ex-date passed before first sync) falls back to today's rate and qty - best effort", () => {
     const row = resolveDividendRow(base, null); // ex 2026-08-15, today 2026-09-02, no prior
     expect(row.locked).toBe(1);
     // Known limitation: a dividend whose ex-date passed before D1 ever stored it has no frozen

@@ -12,10 +12,10 @@ export interface EarningsCalendarEntry {
 
 export interface EarningsResult {
   symbol: string;
-  /** Fiscal quarter-end date, YYYY-MM-DD — can be in the FUTURE for a quarter just reported
+  /** Fiscal quarter-end date, YYYY-MM-DD - can be in the FUTURE for a quarter just reported
    *  (a company reports Q2 in mid-Q3, but Finnhub dates it by the quarter end). */
   period: string;
-  /** Finnhub's fiscal quarter number (1-4) and fiscal year — NOT calendar. */
+  /** Finnhub's fiscal quarter number (1-4) and fiscal year - NOT calendar. */
   quarter: number;
   year: number;
   estimate: number | null;
@@ -45,7 +45,7 @@ export async function fetchEarningsCalendar(
 
 /**
  * `calendar/earnings?symbol=` (free tier) returns a small number of the ticker's most recent
- * entries WITH revenueActual / revenueEstimate / epsActual — the fields `stock/earnings` lacks.
+ * entries WITH revenueActual / revenueEstimate / epsActual - the fields `stock/earnings` lacks.
  * Used to attach revenue to the latest reported quarter.
  */
 export async function fetchRecentEarningsWithRevenue(
@@ -70,7 +70,7 @@ export async function fetchEarningsHistory(token: string, ticker: string): Promi
     const data = (await finnhubGet(`/stock/earnings?symbol=${ticker}`, token)) as unknown;
     return Array.isArray(data) ? (data as EarningsResult[]) : [];
   } catch {
-    // Coverage gaps are expected for some tickers (e.g. non-US listings) — skip, don't fail the batch.
+    // Coverage gaps are expected for some tickers (e.g. non-US listings) - skip, don't fail the batch.
     return [];
   }
 }
@@ -88,7 +88,7 @@ export async function fetchCompanyProfile(token: string, ticker: string): Promis
     };
     return { name: data.name ?? null, logo: data.logo || null };
   } catch {
-    // Coverage gap (e.g. non-US listings) — caller falls back to ticker + initials avatar.
+    // Coverage gap (e.g. non-US listings) - caller falls back to ticker + initials avatar.
     return { name: null, logo: null };
   }
 }

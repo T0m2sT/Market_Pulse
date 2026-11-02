@@ -95,7 +95,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
         const doc = await refreshReturns(env.PORTFOLIO_KV, holdingsDoc.positions);
         return Response.json(doc);
       } catch (err) {
-        // T212 hiccup — fall back to the last-known snapshot rather than erroring; updatedAt shows the staleness.
+        // T212 hiccup - fall back to the last-known snapshot rather than erroring; updatedAt shows the staleness.
         const stale = await getReturns(env.PORTFOLIO_KV);
         return stale
           ? Response.json(stale)
@@ -164,21 +164,21 @@ export default {
 
   async scheduled(event: ScheduledController, env: Env): Promise<void> {
     // Cron schedules. Cloudflare's day-of-week is SHIFTED: 0=Saturday, 1=Sunday, 2=Monday ... 6=Friday
-    // (confirmed empirically in this repo's history — the returns crons use "2-6" for real Mon-Fri;
+    // (confirmed empirically in this repo's history - the returns crons use "2-6" for real Mon-Fri;
     // the standard "1-5" silently skipped Friday and fired Sun-Thu instead).
     //
     // Workers FREE tier: max 5 cron triggers per account, 50 subrequests per invocation.
     //  "5 6 * * *"                daily: earnings calendar sync only
     //                             (briefings are guarded to companies with news that week and no
-    //                             briefing row yet — a full week drains over ~2 daily runs, keeping
+    //                             briefing row yet - a full week drains over ~2 daily runs, keeping
     //                             any one invocation's Claude-call count bounded)
     //  "10 6 * * *"               daily: dividends from EODHD, a rotating slice of 15 holdings per day
     //                             (free tier is 20 req/day). Own invocation so its fetches don't
     //                             eat the earnings/briefings cron's subrequest budget
     //  "* 13-19 * * 2-6"          returns snapshot, every minute, regular market hours (9:30am-4pm ET)
     //  "*/5 0-12,20-23 * * 2-6"   returns snapshot, every 5 min, overnight + pre/post market
-    //                             (both fetch live T212 prices but do NOT write the holdings doc —
-    //                             holdings only change on a manual sync — so each tick is 1 KV write)
+    //                             (both fetch live T212 prices but do NOT write the holdings doc -
+    //                             holdings only change on a manual sync - so each tick is 1 KV write)
     //  "0 6,13,20 * * *"          news article ingest to D1, 3x/day (~25 Marketaux calls/cycle); the 20:00 run also generates up to 4 weekly briefings
     if (event.cron === "5 6 * * *") {
       const holdings = await getHoldings(env.PORTFOLIO_KV);

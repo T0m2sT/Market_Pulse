@@ -38,17 +38,17 @@ export async function getReturns(kv: KVNamespace): Promise<ReturnsDoc | null> {
 
 /**
  * T212's /equity/portfolio returns currentPrice/averagePrice in each security's own trading
- * currency (USD for every US-listed holding here), NOT the account's EUR — confirmed against
+ * currency (USD for every US-listed holding here), NOT the account's EUR - confirmed against
  * T212's docs and by the fact our totals were ~6% higher than the real EUR total before this
  * fix (raw USD numbers being summed as if they were already euros). ppl is NOT affected: T212
  * computes that one server-side in account currency already (confirmed matching T212's own
  * total P&L in an earlier check), so only currentPrice/averagePrice-derived figures (value,
  * cost basis) need converting here.
  *
- * Manual positions (isManual) are skipped — MOUS's price was hand-converted to EUR at entry,
+ * Manual positions (isManual) are skipped - MOUS's price was hand-converted to EUR at entry,
  * so it's already correct and re-converting would double-discount it.
  *
- * Not currency-exact for KAP.L (GBP-listed) — this applies one USD->EUR rate to every non-manual
+ * Not currency-exact for KAP.L (GBP-listed) - this applies one USD->EUR rate to every non-manual
  * position. Good enough per explicit call: the alternative (per-position currency detection)
  * was ruled out as more complexity than this portfolio's one GBP position justifies.
  */
@@ -58,7 +58,7 @@ export function computeReturns(holdings: Holding[], usdToEur: number): ReturnsDo
   for (const h of holdings) {
     const fx = h.isManual ? 1 : usdToEur;
     const costBasis = h.averagePrice * h.quantity * fx;
-    // T212 positions: use T212's own ppl (already in EUR, includes FX effects — do not convert
+    // T212 positions: use T212's own ppl (already in EUR, includes FX effects - do not convert
     // this one). Manual positions have no T212 feed, so compute directly instead.
     const pnl = h.isManual ? (h.currentPrice - h.averagePrice) * h.quantity : (h.ppl ?? 0);
     const position: PositionReturn = {
@@ -106,7 +106,7 @@ export async function refreshReturns(kv: KVNamespace, holdings: Holding[]): Prom
   try {
     usdToEur = await usdToEurRate();
   } catch {
-    // FX provider hiccup — fall back to the last-known snapshot rather than showing wrong
+    // FX provider hiccup - fall back to the last-known snapshot rather than showing wrong
     // (unconverted) numbers; the caller (index.ts) already has stale-fallback handling for this.
     const stale = await getReturns(kv);
     if (stale) return stale;

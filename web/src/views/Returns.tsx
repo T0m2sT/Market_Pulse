@@ -63,7 +63,7 @@ export default function Returns() {
 
   useEffect(() => {
     load();
-    // Backend snapshot refreshes every minute during market hours (server-side cron) — poll
+    // Backend snapshot refreshes every minute during market hours (server-side cron) - poll
     // the cached GET here to pick that up, rather than triggering our own /refresh (real T212 call).
     const interval = setInterval(load, 60_000);
     return () => clearInterval(interval);

@@ -21,7 +21,7 @@ export type Sector = (typeof SECTORS)[number];
 export interface Holding {
   ticker: string;
   /**
-   * Optional display override — shown in the UI wherever the ticker chip appears. Used when
+   * Optional display override - shown in the UI wherever the ticker chip appears. Used when
    * T212's own raw feed reports a stale symbol (e.g. still calls Howmet Aerospace "ARNC" after
    * its 2020 spinoff rename) but `ticker` itself must stay unchanged so the next portfolio sync
    * still recognises this as the same position.
@@ -36,19 +36,19 @@ export interface Holding {
   currentPrice: number;
   /**
    * T212's own unrealized P&L for this position, in account currency (already includes FX
-   * effects T212 computes server-side — do NOT recompute this as (currentPrice - averagePrice)
+   * effects T212 computes server-side - do NOT recompute this as (currentPrice - averagePrice)
    * * quantity, that formula silently drops the FX component and was confirmed wrong against
    * every live position). Manual positions have no T212 feed, so this is computed locally
-   * instead — see returns.ts.
+   * instead - see returns.ts.
    */
   ppl?: number;
-  /** Real company logo URL from Finnhub, fetched once on first sync — falls back to an initials avatar when absent. */
+  /** Real company logo URL from Finnhub, fetched once on first sync - falls back to an initials avatar when absent. */
   logo?: string;
   /** True for a position with no T212 feed (private/unlisted shares, a manually-tracked ticker). */
   isManual: boolean;
   /**
    * Overrides for when T212's ticker doesn't match what a given provider indexes the company
-   * under — and the two providers can disagree with each other, not just with T212. Confirmed
+   * under - and the two providers can disagree with each other, not just with T212. Confirmed
    * case: Oasis Petroleum renamed to Chord Energy in 2022. Finnhub only recognises the new
    * ticker (CHRD); Marketaux still indexes news under the old one (OAS) and returns nothing
    * for CHRD. A single override can't satisfy both, so each provider gets its own.
@@ -57,12 +57,12 @@ export interface Holding {
   marketauxTicker?: string;
 }
 
-/** The ticker to query Finnhub with — override if set, else the T212 ticker. */
+/** The ticker to query Finnhub with - override if set, else the T212 ticker. */
 export function finnhubLookupTicker(holding: Holding): string {
   return holding.finnhubTicker ?? holding.ticker;
 }
 
-/** The ticker to query Marketaux with — override if set, else the T212 ticker. */
+/** The ticker to query Marketaux with - override if set, else the T212 ticker. */
 export function marketauxLookupTicker(holding: Holding): string {
   return holding.marketauxTicker ?? holding.ticker;
 }
@@ -124,13 +124,13 @@ function normaliseWeights(positions: Omit<Holding, "weight">[]): Holding[] {
 }
 
 /**
- * Pulls live positions from T212 and merges them with existing holdings, WITHOUT writing to KV —
+ * Pulls live positions from T212 and merges them with existing holdings, WITHOUT writing to KV -
  * the caller decides whether this is a manual sync (writes) or just a price refresh for computing
  * returns (doesn't write, so the automated per-minute returns cron costs 1 KV write, not 2).
- * Manual positions (isManual: true) are untouched — T212 has no record of them.
+ * Manual positions (isManual: true) are untouched - T212 has no record of them.
  * T212 positions get fresh quantity/price; sector, name, logo, and ticker overrides are
  * preserved once resolved. Company name/logo are fetched from Finnhub only the first time a
- * ticker is seen (name still equals the raw ticker) — not re-fetched every cycle.
+ * ticker is seen (name still equals the raw ticker) - not re-fetched every cycle.
  */
 export async function fetchMergedTrading212Positions(
   kv: KVNamespace,
@@ -171,7 +171,7 @@ export async function fetchMergedTrading212Positions(
 }
 
 /** Manual-only: syncs holdings from T212 AND writes the result to KV. Call this from a user-triggered
- * action (PUT /api/holdings, a "sync now" button) — never from an automated cron, so holdings only
+ * action (PUT /api/holdings, a "sync now" button) - never from an automated cron, so holdings only
  * change when the user asks. For automated returns refreshes, use fetchMergedTrading212Positions instead. */
 export async function syncFromTrading212(
   kv: KVNamespace,

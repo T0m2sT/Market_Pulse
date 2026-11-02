@@ -16,7 +16,7 @@ export interface DividendRow {
   locked: boolean;
 }
 
-/** Serving shape — name/logo joined from KV holdings by the route. */
+/** Serving shape - name/logo joined from KV holdings by the route. */
 export interface Dividend extends DividendRow {
   name: string;
   logo?: string;
@@ -27,7 +27,7 @@ const RETENTION_DAYS = 60;
 /** Holdings fetched per run; under EODHD's free 20/day with headroom for manual admin runs. */
 const DAILY_FETCH_LIMIT = 15;
 
-/** US/EU tax-treaty withholding rate on US-sourced dividends — brokers (T212 included) pay out
+/** US/EU tax-treaty withholding rate on US-sourced dividends - brokers (T212 included) pay out
  * net of this, but EODHD's `value` is gross. Applied only to USD dividends; other currencies
  * (e.g. KAP.LSE's KZT) aren't known to withhold at this rate so are left untouched. */
 const US_WITHHOLDING_RATE = 0.15;
@@ -67,10 +67,10 @@ interface ResolveInput {
   perShare: number;
   /** Conversion rate from that currency to EUR. */
   fxToEur: number;
-  /** Fraction withheld at source (e.g. 0.15 for US dividends) — applied to the EUR-converted amount. */
+  /** Fraction withheld at source (e.g. 0.15 for US dividends) - applied to the EUR-converted amount. */
   withholdingRate: number;
   quantity: number;
-  /** Current share price in EUR (T212 account currency) — yield is computed entirely in EUR. */
+  /** Current share price in EUR (T212 account currency) - yield is computed entirely in EUR. */
   currentPriceEur: number;
   paymentsPerYear: number;
   today: string;
@@ -95,7 +95,7 @@ export function resolveDividendRow(
   const locked = wasLocked || input.exDate < input.today;
 
   // `locked && prior`: freeze the stored snapshot. `locked && !prior`: the ex-date passed before
-  // this dividend was ever stored (D1 empty at first deploy, or holding added late) — no snapshot
+  // this dividend was ever stored (D1 empty at first deploy, or holding added late) - no snapshot
   // to freeze, so fall back to today's FX + today's share count. Best effort.
   const perShareEur =
     locked && prior
@@ -200,7 +200,7 @@ export async function refreshDividends(
       events = await fetchEodhdDividends(eodhdKey, marketauxLookupTicker(h));
     } catch (err) {
       console.error(`EODHD dividends failed for ${h.ticker}:`, err);
-      continue; // provider hiccup — keep this ticker's existing rows untouched
+      continue; // provider hiccup - keep this ticker's existing rows untouched
     }
     if (events.length === 0) continue;
 

@@ -107,7 +107,7 @@ export default function Settings() {
       <Card>
         <h3 style={{ marginBottom: "var(--space-2)" }}>API keys</h3>
         <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: "var(--space-3)" }}>
-          These are set as Worker secrets during deployment, not here — see the README. Tap the{" "}
+          These are set as Worker secrets during deployment, not here - see the README. Tap the{" "}
           <span style={{ fontStyle: "italic" }}>i</span> next to each for what it's for and where to get it.
         </p>
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
@@ -140,7 +140,7 @@ export default function Settings() {
       <Card>
         <h3 style={{ marginBottom: "var(--space-2)" }}>Push notifications</h3>
         <p style={{ fontSize: 13, color: "var(--text-tertiary)" }}>
-          Not yet available — coming in a later phase.
+          Not yet available - coming in a later phase.
         </p>
       </Card>
     </div>

@@ -4,14 +4,14 @@
  *
  * Field notes (confirmed against real data 2026-09):
  *  - `date` is the ex-dividend date; `paymentDate` and `declarationDate` are real (not estimated).
- *  - Use `value` (split-adjusted per share) — the correct cash-per-share figure. `unadjustedValue`
+ *  - Use `value` (split-adjusted per share) - the correct cash-per-share figure. `unadjustedValue`
  *    carries a phantom 10x on some older rows and is unreliable.
  *  - `currency` is the stock's reporting currency (USD for US listings, KZT for KAP.LSE, ...).
  *    Callers must convert from THIS currency, not assume USD.
  *  - `period` is "Quarterly" / "SemiAnnual" / "Interim" / "Annual" / "Monthly".
  *
  * EODHD only carries dividends up to the most recent declared one (no speculative future rows),
- * but picks a new one up around its declaration date — so an upcoming dividend appears here
+ * but picks a new one up around its declaration date - so an upcoming dividend appears here
  * ~2-6 weeks before its ex-date.
  */
 

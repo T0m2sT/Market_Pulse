@@ -76,7 +76,7 @@ export function periodLabel(date: string, now: string = today()): string {
 /**
  * Label a quarter using the company's OWN fiscal quarter+year when Finnhub provides them, else
  * fall back to the calendar quarter. Companies with offset fiscal years (NVDA, MSFT, AVGO, TJX, ...)
- * report e.g. "Q2 FY2027" in mid-2026 — labelling that by calendar quarter is confusing and made
+ * report e.g. "Q2 FY2027" in mid-2026 - labelling that by calendar quarter is confusing and made
  * the just-reported quarter look like the wrong one. `announcedDate` (when results came out) is a
  * better fallback anchor than the fiscal period-end, which can be a year ahead.
  */
@@ -226,7 +226,7 @@ export async function refreshEarnings(
   // --- Results: Finnhub /stock/earnings gives ~4 clean quarters of EPS actual vs estimate.
   //     `period` is the fiscal quarter-END date and CAN be in the future for a quarter that was
   //     just reported (a company reports Q2 in the middle of Q3). Keep any row that has an
-  //     `actual` — don't filter on date. ---
+  //     `actual` - don't filter on date. ---
   const revFrom = new Date(Date.now() - 400 * 86400000).toISOString().slice(0, 10);
   const revTo = today();
 
@@ -243,7 +243,7 @@ export async function refreshEarnings(
     if (reported.length === 0) continue;
 
     // calendar/earnings?symbol= carries the real announcement date + revenueActual, keyed by
-    // fiscal quarter/year — join on that so the row's date aligns with its calendar dot and the
+    // fiscal quarter/year - join on that so the row's date aligns with its calendar dot and the
     // revenue lands on the right quarter.
     let byFiscal = new Map<
       string,
@@ -374,7 +374,7 @@ async function retain(d1: D1Database): Promise<void> {
   }
 
   // Results: keep the 4 most recent reported quarters, ranked by announced_date (falls back to
-  // the fiscal-end `date`). Never filter on date < today — a just-reported quarter's fiscal-end
+  // the fiscal-end `date`). Never filter on date < today - a just-reported quarter's fiscal-end
   // date is still in the future.
   const resTickers = await db.all<{ ticker: string }>(d1, `SELECT DISTINCT ticker FROM earnings_results`);
   for (const { ticker } of resTickers) {

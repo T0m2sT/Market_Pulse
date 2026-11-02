@@ -5,7 +5,7 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
   const [dragX, setDragX] = useState(0);
   const [dragging, setDragging] = useState(false);
 
-  // The modal is rendered inside <main>, whose own swipe handler switches tabs / goes back —
+  // The modal is rendered inside <main>, whose own swipe handler switches tabs / goes back -
   // stop touch events here so a swipe on the popup doesn't also move the page behind it.
   const onTouchStart = (e: React.TouchEvent) => {
     e.stopPropagation();

@@ -1,9 +1,9 @@
 /** Free, no-key FX rates, refreshed daily by the provider. refreshReturns calls usdToEurRate
  * every minute during market hours, so rates are cached in-memory for the Worker instance's
- * lifetime — without this, hammering the free API every minute gets rate-limited, which silently
+ * lifetime - without this, hammering the free API every minute gets rate-limited, which silently
  * skips the returns write (refreshReturns falls back to the stale doc on fetch failure). */
 const cache = new Map<string, { rate: number; fetchedAt: number }>();
-const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour — plenty fresh for a daily-updated rate
+const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour - plenty fresh for a daily-updated rate
 
 /** <currency> -> EUR conversion rate (e.g. currencyToEurRate("USD") ~= 0.92). */
 export async function currencyToEurRate(currency: string): Promise<number> {

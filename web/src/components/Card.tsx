@@ -68,7 +68,7 @@ export function Freshness({ updatedAt }: { updatedAt: string }) {
   );
 }
 
-/** value is always in the T212 account currency (EUR) — every P&L this app computes is portfolio money. */
+/** value is always in the T212 account currency (EUR) - every P&L this app computes is portfolio money. */
 export function PnL({ value, percent }: { value: number; percent: number }) {
   const sign = value >= 0 ? "positive" : "negative";
   const prefix = value >= 0 ? "+" : "";
@@ -80,7 +80,7 @@ export function PnL({ value, percent }: { value: number; percent: number }) {
   );
 }
 
-/** A small dropdown for switching between sort/view modes — used by Returns and Earnings. */
+/** A small dropdown for switching between sort/view modes - used by Returns and Earnings. */
 export function FilterMenu<T extends string>({
   mode,
   onChange,
