@@ -81,7 +81,7 @@
 .bottom-nav {
   position: absolute;
   right: var(--space-4);
-  bottom: 6px; /* deliberately inside the home-indicator safe area, like a native tab bar */
+  bottom: max(8px, calc(env(safe-area-inset-bottom) / 2)); /* just clear of the home-indicator line, which iOS always draws on top */
   left: var(--space-4);
   z-index: 100;
   display: flex;
