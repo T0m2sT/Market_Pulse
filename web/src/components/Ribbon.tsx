@@ -1,7 +1,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 
 const SPEED_PX_PER_S = 28;
-const RESUME_AFTER_MS = 2500;
+const RESUME_AFTER_MS = 1000;
 
 /**
  * Horizontal strip that drifts on its own, can be scrolled by hand, and resumes drifting once the
