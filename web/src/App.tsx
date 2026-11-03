@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { BrowserRouter, Routes, Route, NavLink, useLocation, useNavigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, NavLink, Link, useLocation, useNavigate } from "react-router-dom";
 import Today from "./views/Today";
 import News from "./views/News";
 import Earnings from "./views/Earnings";
@@ -45,10 +45,10 @@ function TopBar() {
           ← Back
         </button>
       ) : (
-        <div className="brand">
+        <Link to="/" className="brand" aria-label="Market Pulse, go to Today">
           <img src="/apple-touch-icon.png" alt="" className="brand-icon" />
           <span className="brand-name">Market Pulse</span>
-        </div>
+        </Link>
       )}
       <button className="settings-gear" onClick={() => navigate("/settings")} aria-label="Settings">
         ⚙
