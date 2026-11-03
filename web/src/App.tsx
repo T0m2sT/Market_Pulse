@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { BrowserRouter, Routes, Route, NavLink, Link, useLocation, useNavigate } from "react-router-dom";
 import Today from "./views/Today";
 import News from "./views/News";
@@ -158,29 +158,7 @@ function SwipeableContent() {
   );
 }
 
-// iOS standalone can report a layout viewport shorter than the physical screen, leaving a dead band
-// under the app. Stretch the shell to the real screen height so the dock can use that space.
-function useFullScreenHeight() {
-  useEffect(() => {
-    const apply = () => {
-      const standalone = window.matchMedia("(display-mode: standalone)").matches || (navigator as { standalone?: boolean }).standalone;
-      const portrait = window.innerHeight > window.innerWidth;
-      const root = document.documentElement.style;
-      if (standalone && portrait && screen.height > window.innerHeight) root.setProperty("--app-h", `${screen.height}px`);
-      else root.removeProperty("--app-h");
-    };
-    apply();
-    window.addEventListener("resize", apply);
-    window.addEventListener("orientationchange", apply);
-    return () => {
-      window.removeEventListener("resize", apply);
-      window.removeEventListener("orientationchange", apply);
-    };
-  }, []);
-}
-
 export default function App() {
-  useFullScreenHeight();
   return (
     <BrowserRouter>
       <div className="app-shell">
