@@ -73,11 +73,13 @@ html {
   background: var(--bg-base);
 }
 
-/* The app shell is position:fixed, so the document itself never scrolls. Keep html/body/#root free of
-   fixed heights and overflow clipping: on iOS standalone, that clipped the page (and the dock) at the
-   short innerHeight and left a dead band under the app. */
+/* The app shell is position:fixed. On iOS standalone the layout viewport shrinks to innerHeight (62px short
+   of the screen) when the document cannot scroll, which cut the app and dock off above the screen bottom.
+   Giving body a 100vh min-height makes the document scrollable like a normal page, so fixed elements reach
+   the real bottom edge (confirmed with a bare probe page on the device). */
 body {
   margin: 0;
+  min-height: 100vh;
   background: var(--bg-base);
   color: var(--text-primary);
   font-size: 16px;
