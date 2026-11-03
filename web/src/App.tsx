@@ -27,6 +27,12 @@ function isDetailRoute(pathname: string): boolean {
   return DETAIL_PREFIXES.some((p) => pathname === p || pathname.startsWith(p));
 }
 
+// Go back one step, or to Today when this screen was opened directly (reopened PWA, pasted URL) and there is no history.
+function goBack(navigate: ReturnType<typeof useNavigate>) {
+  if (window.history.state?.idx > 0) navigate(-1);
+  else navigate("/", { replace: true });
+}
+
 function TopBar() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -35,7 +41,7 @@ function TopBar() {
   return (
     <header className="top-bar">
       {detail ? (
-        <button className="top-bar-back" onClick={() => navigate(-1)}>
+        <button className="top-bar-back" onClick={() => goBack(navigate)}>
           ← Back
         </button>
       ) : (
@@ -112,7 +118,7 @@ function SwipeableContent() {
 
     // On a detail screen, a rightward swipe (mostly horizontal, past threshold) goes back.
     if (detail) {
-      if (dx > SWIPE_THRESHOLD_PX && Math.abs(dx) > Math.abs(dy)) navigate(-1);
+      if (dx > SWIPE_THRESHOLD_PX && Math.abs(dx) > Math.abs(dy)) goBack(navigate);
       return;
     }
 
