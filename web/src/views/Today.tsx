@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import type { NewsDoc, EarningsDoc, DividendsDoc, HoldingsDoc, ReturnsDoc } from "../api/types";
-import { Card, Freshness } from "../components/Card";
+import { Card } from "../components/Card";
 import { TickerAvatar } from "../components/TickerAvatar";
 import { Hero } from "../components/Hero";
 import { Ribbon } from "../components/Ribbon";
@@ -94,7 +94,6 @@ export default function Today() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
       <h1>Today</h1>
-      <Freshness updatedAt={news.updatedAt} />
 
       {returns && (
         <Hero label="Portfolio value" value={returns.totalValue} pnl={returns.totalPnl} percent={returns.totalPnlPercent} />
