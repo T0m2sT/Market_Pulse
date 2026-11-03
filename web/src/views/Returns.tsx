@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import type { ReturnsDoc, PositionReturn } from "../api/types";
+import { Hero } from "../components/Hero";
 import { Card, Freshness, PnL, Row, FilterMenu } from "../components/Card";
 import { TickerAvatar } from "../components/TickerAvatar";
 import { eur } from "../format";
@@ -21,11 +22,12 @@ function shares(q: number): string {
   return q.toFixed(4).replace(/\.?0+$/, "");
 }
 
-function PositionRow({ p, totalValue }: { p: PositionReturn; totalValue: number }) {
+function PositionRow({ p, totalValue, last }: { p: PositionReturn; totalValue: number; last: boolean }) {
   const value = p.currentPrice * p.quantity;
   const weight = totalValue > 0 ? (value / totalValue) * 100 : 0;
   return (
     <Row
+      last={last}
       leading={<TickerAvatar ticker={p.ticker} logo={p.logo} />}
       label={p.name}
       sublabel={
@@ -75,16 +77,43 @@ export default function Returns() {
   const allPositions = doc.sectors.flatMap((s) => s.positions);
   const sectors = [...doc.sectors].sort((a, b) => b.value - a.value);
 
-  let flatSorted: PositionReturn[] = [];
-  if (mode === "name") {
-    flatSorted = [...allPositions].sort((a, b) => a.name.localeCompare(b.name));
+  const valueOf = (p: PositionReturn) => p.currentPrice * p.quantity;
+  const byValue = (a: PositionReturn, b: PositionReturn) => valueOf(b) - valueOf(a);
+
+  // One card per group; the active filter decides the groups.
+  let buckets: { title: string; positions: PositionReturn[] }[] = [];
+  if (mode === "sector") {
+    buckets = sectors.map((s) => ({ title: s.sector, positions: [...s.positions].sort(byValue) }));
+  } else if (mode === "name") {
+    const byLetter = new Map<string, PositionReturn[]>();
+    for (const p of [...allPositions].sort((a, b) => a.name.localeCompare(b.name))) {
+      const k = p.name.charAt(0).toUpperCase();
+      byLetter.set(k, [...(byLetter.get(k) ?? []), p]);
+    }
+    buckets = [...byLetter].map(([title, positions]) => ({ title, positions }));
   } else if (mode === "return") {
-    flatSorted = [...allPositions].sort((a, b) => b.pnlPercent - a.pnlPercent);
-  } else if (mode === "weight") {
-    flatSorted = [...allPositions].sort(
-      (a, b) => b.currentPrice * b.quantity - a.currentPrice * a.quantity,
-    );
+    const sorted = [...allPositions].sort((a, b) => b.pnlPercent - a.pnlPercent);
+    buckets = [
+      { title: "Gainers", positions: sorted.filter((p) => p.pnl >= 0) },
+      { title: "Losers", positions: sorted.filter((p) => p.pnl < 0) },
+    ];
+  } else {
+    const sorted = [...allPositions].sort(byValue);
+    const share = (p: PositionReturn) => (doc.totalValue > 0 ? valueOf(p) / doc.totalValue : 0);
+    buckets = [
+      { title: "Over 10% of portfolio", positions: sorted.filter((p) => share(p) >= 0.1) },
+      { title: "5% to 10%", positions: sorted.filter((p) => share(p) >= 0.05 && share(p) < 0.1) },
+      { title: "Under 5%", positions: sorted.filter((p) => share(p) < 0.05) },
+    ];
   }
+  const groups = buckets
+    .filter((g) => g.positions.length > 0)
+    .map((g) => {
+      const value = g.positions.reduce((s, p) => s + valueOf(p), 0);
+      const pnl = g.positions.reduce((s, p) => s + p.pnl, 0);
+      const cost = value - pnl;
+      return { ...g, value, pnl, percent: cost > 0 ? pnl / cost : 0 };
+    });
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
@@ -94,47 +123,15 @@ export default function Returns() {
       </div>
       <Freshness updatedAt={doc.updatedAt} />
 
-      <Card elevated>
-        <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: "var(--space-1)" }}>
-          Total value
-        </p>
-        <p className="num" style={{ fontSize: 32, fontWeight: 600, letterSpacing: "-0.02em" }}>
-          {eur(doc.totalValue)}
-        </p>
-        <PnL value={doc.totalPnl} percent={doc.totalPnlPercent} />
-      </Card>
+      <Hero label="Total value" value={doc.totalValue} pnl={doc.totalPnl} percent={doc.totalPnlPercent} />
 
-      {mode === "sector"
-        ? sectors.map((s) => {
-            const allocation = doc.totalValue > 0 ? (s.value / doc.totalValue) * 100 : 0;
-            return (
-              <div key={s.sector}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "var(--space-2)" }}>
-                  <h3>
-                    {s.sector} <span style={{ fontSize: 12, fontWeight: 400, color: "var(--text-tertiary)" }}>{allocation.toFixed(1)}%</span>
-                  </h3>
-                  <div style={{ textAlign: "right" }}>
-                    <p className="num" style={{ color: "var(--text-secondary)", fontSize: 14 }}>{eur(s.value)}</p>
-                    <PnL value={s.pnl} percent={s.pnlPercent} />
-                  </div>
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
-                  {[...s.positions]
-                    .sort((a, b) => b.currentPrice * b.quantity - a.currentPrice * a.quantity)
-                    .map((p) => (
-                      <PositionRow key={p.ticker} p={p} totalValue={doc.totalValue} />
-                    ))}
-                </div>
-              </div>
-            );
-          })
-        : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
-            {flatSorted.map((p) => (
-              <PositionRow key={p.ticker} p={p} totalValue={doc.totalValue} />
-            ))}
-          </div>
-        )}
+      {groups.map((g) => (
+        <Hero key={g.title} compact label={g.title} value={g.value} pnl={g.pnl} percent={g.percent}>
+          {g.positions.map((p, i) => (
+            <PositionRow key={p.ticker} p={p} totalValue={doc.totalValue} last={i === g.positions.length - 1} />
+          ))}
+        </Hero>
+      ))}
 
       <button
         onClick={() => navigate("/holdings")}

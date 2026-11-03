@@ -1,46 +1,55 @@
 :root {
+  /* Dark only. Palette taken from the owner's GitHub readme redesign: near-black navy page, gradient navy
+     panels with thin blue borders, soft orange accent, mono for labels. */
   color-scheme: dark;
 
-  /* Elevation - two steps by luminance, plus a subtle shadow for premium depth */
-  --bg-base: #0b0d11;
-  --bg-elevated-1: #15161d;
-  --bg-elevated-2: #1d1f29;
-  --shadow-card: 0 4px 16px rgba(0, 0, 0, 0.28);
+  --ink: #070b18;
+  --orange: #f0883e;
 
-  /* Text */
-  --text-primary: #f5f6f8;
-  --text-secondary: #9a9db0;
-  --text-tertiary: #5f6377;
+  --bg-base: #070b18;
+  --bg-elevated-1: #0e1830;
+  --bg-elevated-2: #16264d;
+  --card-bg: linear-gradient(165deg, #12214a 0%, #0b1329 100%);
+  --card-bg-strong: linear-gradient(165deg, #1a2f63 0%, #0f1c3d 100%);
+  --shadow-card: 0 1px 0 rgba(140, 170, 240, 0.06) inset, 0 20px 44px -24px rgba(0, 0, 0, 0.8);
 
-  /* Accent - deep indigo/violet, premium rather than "finance blue" */
-  --accent: #7c6cf0;
-  --accent-dim: #4a3f94;
-  --accent-wash: rgba(124, 108, 240, 0.14);
+  --text-primary: #e8edf8;
+  --text-secondary: #a2b0d0;
+  --text-tertiary: #7b8cb3;
 
-  /* P&L: standard finance convention, green up / red down */
-  --positive: #4fb87a;
-  --negative: #e0625f;
+  --accent: #f0883e;
+  --accent-fill: var(--orange);
+  --on-accent: var(--ink);
+  --accent-dim: #6b3a17;
+  --accent-wash: rgba(240, 136, 62, 0.18);
 
-  /* Distinct from P&L - used for genuine warnings (stale data), not gain/loss */
-  --warning: #c9a15f;
+  --positive: #5fd68a;
+  --negative: #f06a6a;
+  --warning: #f5c27a;
+  --glow: color-mix(in srgb, var(--positive) 55%, transparent);
 
-  /* Ticker avatar palette - muted, distinct, deterministic per ticker (see avatarColor()) */
-  --ticker-1: #6e7fb0;
-  --ticker-2: #7f9e8a;
-  --ticker-3: #b0876e;
-  --ticker-4: #9a7fb0;
-  --ticker-5: #b06e8a;
-  --ticker-6: #6eafb0;
-  --ticker-7: #a0a06e;
-  --ticker-8: #b09a6e;
+  /* Hero panels (portfolio value, lead story): a brighter navy gradient, still on-palette */
+  --hero-bg: var(--card-bg-strong);
+  --hero-fg: #f1f4fb;
+  --positive-on-hero: #6fe39a;
+  --negative-on-hero: #ff8585;
 
-  /* Structure - Revolut-style heavy rounding */
-  --hairline: rgba(255, 255, 255, 0.07);
-  --radius-sm: 18px;
-  --radius-md: 22px;
+  --on-avatar: var(--ink);
+  --ticker-1: #7f95c4;
+  --ticker-2: #5fb894;
+  --ticker-3: #d4875c;
+  --ticker-4: #9f88d8;
+  --ticker-5: #d4809e;
+  --ticker-6: #5fa8b4;
+  --ticker-7: #b0a862;
+  --ticker-8: #d4a862;
+
+  --hairline: rgba(130, 160, 230, 0.18);
+  --line-strong: rgba(130, 160, 230, 0.38);
+  --radius-sm: 16px;
+  --radius-md: 24px;
   --radius-lg: 28px;
 
-  /* Spacing scale */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -48,7 +57,11 @@
   --space-5: 24px;
   --space-6: 32px;
 
-  font-family: system-ui, -apple-system, "SF Pro Text", "Segoe UI", sans-serif;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+
+  --font-display: "Bricolage Grotesque Variable", "Hanken Grotesk Variable", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
+  font-family: "Hanken Grotesk Variable", system-ui, -apple-system, "SF Pro Text", "Segoe UI", sans-serif;
 }
 
 * {
@@ -99,6 +112,59 @@ h3 {
   letter-spacing: -0.01em;
 }
 
+/* Display voice: big, tight, with one orange full stop as the only decoration. */
+h1 {
+  font-family: var(--font-display);
+  font-size: 56px;
+  font-weight: 800;
+  line-height: 0.92;
+  letter-spacing: -0.045em;
+}
+
+h1::after {
+  content: ".";
+  color: var(--accent-fill);
+}
+
+.display {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.045em;
+  line-height: 0.95;
+}
+
+/* Page entrance: children rise in sequence once per route. Reduced motion renders the final state. */
+@media (prefers-reduced-motion: no-preference) {
+  .app-content > div > * {
+    animation: rise 700ms var(--ease) both;
+  }
+  .app-content > div > *:nth-child(2) { animation-delay: 60ms; }
+  .app-content > div > *:nth-child(3) { animation-delay: 120ms; }
+  .app-content > div > *:nth-child(4) { animation-delay: 180ms; }
+  .app-content > div > *:nth-child(5) { animation-delay: 240ms; }
+  .app-content > div > *:nth-child(n + 6) { animation-delay: 300ms; }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+button {
+  transition: transform 160ms var(--ease), background-color 160ms var(--ease), color 160ms var(--ease);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent-fill);
+  outline-offset: 2px;
+}
+
 p {
   margin: 0;
 }
@@ -124,5 +190,24 @@ a {
 /* Dividend payment-date amount: the money has actually landed, so it glows. */
 .glow-positive {
   color: var(--positive);
-  text-shadow: 0 0 12px color-mix(in srgb, var(--positive) 70%, transparent);
+  text-shadow: 0 0 12px var(--glow);
+}
+
+/* Mono voice for small labels and figures, as in the readme redesign. */
+.mono {
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+}
+
+/* Briefing tiles: one full-width column on phones, two columns from tablet width up. */
+.tile-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-3);
+}
+
+@media (min-width: 700px) {
+  .tile-grid {
+    grid-template-columns: 1fr 1fr;
+  }
 }

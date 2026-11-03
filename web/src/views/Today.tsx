@@ -4,24 +4,29 @@ import { api } from "../api/client";
 import type { NewsDoc, EarningsDoc, DividendsDoc, HoldingsDoc } from "../api/types";
 import { Card, Freshness } from "../components/Card";
 import { TickerAvatar } from "../components/TickerAvatar";
+import { Hero } from "../components/Hero";
+import { Ribbon } from "../components/Ribbon";
 import { Calendar, type CalendarEvent } from "../components/Calendar";
 import { Modal } from "../components/Modal";
 import { eur, usd, abbreviateUsd } from "../format";
+import { BriefingTile } from "../components/BriefingTile";
 
-function SectionHeader({ children }: { children: string }) {
+function SectionHeader({ children, action }: { children: string; action?: { label: string; onClick: () => void } }) {
   return (
-    <h2
-      style={{
-        fontSize: 12,
-        fontWeight: 700,
-        letterSpacing: "0.08em",
-        textTransform: "uppercase",
-        color: "var(--text-tertiary)",
-        marginTop: "var(--space-2)",
-      }}
-    >
-      {children}
-    </h2>
+    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginTop: "var(--space-5)" }}>
+      <h2 className="display" style={{ fontSize: 28 }}>
+        {children}
+      </h2>
+      {action && (
+        <button
+          onClick={action.onClick}
+          className="mono"
+          style={{ background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 12, fontWeight: 700 }}
+        >
+          {action.label}
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -50,6 +55,22 @@ export default function Today() {
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"));
   }, []);
 
+  const portfolio = useMemo(() => {
+    const ps = holdings?.positions ?? [];
+    if (ps.length === 0) return null;
+    const value = ps.reduce((s, p) => s + p.quantity * p.currentPrice, 0);
+    const cost = ps.reduce((s, p) => s + p.quantity * p.averagePrice, 0);
+    return { value, pnl: value - cost, percent: cost > 0 ? (value - cost) / cost : 0 };
+  }, [holdings]);
+
+  const ribbon = useMemo(
+    () =>
+      [...(holdings?.positions ?? [])]
+        .sort((a, b) => b.weight - a.weight)
+        .map((p) => ({ ...p, change: p.averagePrice > 0 ? p.currentPrice / p.averagePrice - 1 : 0 })),
+    [holdings],
+  );
+
   const calendarEvents: CalendarEvent[] = useMemo(() => {
     const earningsEvents = (earnings?.calendar ?? []).map((e) => ({
       date: e.date,
@@ -70,7 +91,6 @@ export default function Today() {
   if (!news || !earnings || !dividends) return <p style={{ color: "var(--text-tertiary)" }}>Loading…</p>;
 
   const holdingByTicker = new Map((holdings?.positions ?? []).map((p) => [p.ticker, p]));
-
   const shownEarnings = selectedDate ? earnings.calendar.filter((e) => e.date === selectedDate) : [];
   const shownDividends = selectedDate
     ? dividends.dividends.filter((d) => d.exDate === selectedDate || d.paymentDate === selectedDate)
@@ -81,61 +101,62 @@ export default function Today() {
       <h1>Today</h1>
       <Freshness updatedAt={news.updatedAt} />
 
+      {portfolio && (
+        <Hero label="Portfolio value" value={portfolio.value} pnl={portfolio.pnl} percent={portfolio.percent} />
+      )}
+
+      {ribbon.length > 0 && (
+        <Ribbon>
+          {ribbon.map((p) => (
+            <div
+              key={p.ticker}
+              className="num"
+              style={{
+                flex: "none",
+                display: "flex",
+                alignItems: "center",
+                gap: "var(--space-2)",
+                padding: "6px 12px 6px 6px",
+                borderRadius: 999,
+                background: "var(--bg-elevated-1)",
+                border: "1px solid var(--hairline)",
+                fontSize: 13,
+                fontWeight: 700,
+              }}
+            >
+              <TickerAvatar ticker={p.ticker} logo={p.logo} size={24} />
+              {p.displayTicker ?? p.ticker}
+              <span className={p.change >= 0 ? "positive" : "negative"}>
+                {p.change >= 0 ? "+" : "-"}
+                {Math.abs(p.change * 100).toFixed(1)}%
+              </span>
+            </div>
+          ))}
+        </Ribbon>
+      )}
+
       <SectionHeader>Calendar</SectionHeader>
       <Card>
         <Calendar events={calendarEvents} onSelectDate={setSelectedDate} />
       </Card>
 
-      <SectionHeader>News</SectionHeader>
-      {news.briefings.length === 0 && (
+      <SectionHeader action={{ label: "ALL NEWS →", onClick: () => navigate("/news") }}>Briefings</SectionHeader>
+      {news.briefings.length === 0 ? (
         <Card>
           <p style={{ color: "var(--text-tertiary)" }}>No briefings yet.</p>
         </Card>
+      ) : (
+        <div className="tile-grid">
+          {news.briefings.map((b) => (
+            <BriefingTile
+              key={`${b.ticker}:${b.weekStart}`}
+              b={b}
+              logo={holdingByTicker.get(b.ticker)?.logo}
+              onOpen={() => navigate(`/briefing/${b.ticker}/${b.weekStart}`)}
+            />
+          ))}
+        </div>
       )}
-      {news.briefings.map((b) => {
-        const isPositive = b.sentiment >= 0;
-        return (
-          <Card key={`${b.ticker}:${b.weekStart}`} elevated>
-            <button
-              onClick={() => navigate(`/briefing/${b.ticker}/${b.weekStart}`)}
-              style={{
-                display: "block",
-                width: "100%",
-                background: "none",
-                border: "none",
-                padding: 0,
-                textAlign: "left",
-                cursor: "pointer",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "var(--space-2)",
-                  marginBottom: "var(--space-2)",
-                }}
-              >
-                <TickerAvatar ticker={b.ticker} logo={holdingByTicker.get(b.ticker)?.logo} size={24} />
-                <span style={{ color: "var(--accent)", fontWeight: 600, fontSize: 13 }}>{b.ticker}</span>
-                <span
-                  className={`num ${isPositive ? "positive" : "negative"}`}
-                  style={{
-                    fontSize: 11,
-                    padding: "2px 7px",
-                    borderRadius: 999,
-                    background: "var(--bg-elevated-1)",
-                  }}
-                >
-                  {isPositive ? "+" : ""}
-                  {b.sentiment.toFixed(2)}
-                </span>
-              </div>
-              <p style={{ fontSize: 14, color: "var(--text-secondary)", lineHeight: 1.5 }}>{b.summary}</p>
-            </button>
-          </Card>
-        );
-      })}
 
       {selectedDate && (shownEarnings.length > 0 || shownDividends.length > 0) && (
         <Modal

@@ -4,10 +4,11 @@ export function Card({ children, elevated = false }: { children: ReactNode; elev
   return (
     <div
       style={{
-        background: elevated ? "var(--bg-elevated-2)" : "var(--bg-elevated-1)",
-        borderRadius: "var(--radius-md)",
-        padding: "var(--space-4)",
+        background: elevated ? "var(--card-bg-strong)" : "var(--card-bg)",
+        borderRadius: "var(--radius-lg)",
+        padding: "var(--space-5)",
         boxShadow: "var(--shadow-card)",
+        border: "1px solid var(--hairline)",
       }}
     >
       {children}
@@ -15,19 +16,22 @@ export function Card({ children, elevated = false }: { children: ReactNode; elev
   );
 }
 
-/** A self-contained pill-chip list row: leading element (usually a TickerAvatar), label, trailing value. */
+/** A list row separated by a hairline, no chip background: leading element (usually a TickerAvatar), label, trailing value. */
 export function Row({
   leading,
   label,
   sublabel,
   trailing,
   onTap,
+  last = false,
 }: {
   leading?: ReactNode;
   label: ReactNode;
   sublabel?: ReactNode;
   trailing?: ReactNode;
   onTap?: () => void;
+  /** The last row of a group drops its divider line. */
+  last?: boolean;
 }) {
   const Tag = onTap ? "button" : "div";
   return (
@@ -38,10 +42,11 @@ export function Row({
         alignItems: "center",
         gap: "var(--space-3)",
         width: "100%",
-        padding: "var(--space-2) var(--space-3)",
-        borderRadius: "var(--radius-sm)",
-        background: "var(--bg-elevated-2)",
+        padding: "var(--space-3) 0",
+        borderRadius: 0,
+        background: "none",
         border: "none",
+        borderBottom: last ? "none" : "1px solid var(--hairline)",
         textAlign: "left",
         cursor: onTap ? "pointer" : "default",
       }}
@@ -62,7 +67,7 @@ export function Freshness({ updatedAt }: { updatedAt: string }) {
   const date = new Date(updatedAt);
   const isStale = Date.now() - date.getTime() > 1000 * 60 * 60 * 2; // 2h
   return (
-    <p style={{ fontSize: 12, color: isStale ? "var(--warning)" : "var(--text-tertiary)" }}>
+    <p className="mono" style={{ fontSize: 11, color: isStale ? "var(--warning)" : "var(--text-tertiary)" }}>
       Updated {date.toLocaleString(undefined, { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}
     </p>
   );
@@ -100,12 +105,12 @@ export function FilterMenu<T extends string>({
           alignItems: "center",
           gap: "var(--space-1)",
           padding: "var(--space-2) var(--space-3)",
-          borderRadius: "var(--radius-sm)",
-          background: "var(--bg-elevated-2)",
-          border: "none",
+          borderRadius: 999,
+          background: "transparent",
+          border: "1px solid var(--line-strong)",
           color: "var(--text-primary)",
           fontSize: 13,
-          fontWeight: 500,
+          fontWeight: 600,
         }}
       >
         {labels[mode]} ▾

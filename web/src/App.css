@@ -12,7 +12,7 @@
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
-  padding: var(--space-4) var(--space-4) calc(var(--space-4) + 76px + env(safe-area-inset-bottom));
+  padding: var(--space-3) var(--space-5) calc(var(--space-6) + 76px + env(safe-area-inset-bottom));
 }
 
 .top-bar {
@@ -22,10 +22,8 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: calc(var(--space-2) + env(safe-area-inset-top)) var(--space-3) var(--space-2);
-  background: rgba(11, 13, 17, 0.72);
-  backdrop-filter: blur(20px) saturate(180%);
-  border-bottom: 1px solid var(--hairline);
+  padding: calc(var(--space-3) + env(safe-area-inset-top)) var(--space-5) var(--space-2);
+  background: linear-gradient(var(--bg-base) 55%, transparent);
 }
 
 .brand {
@@ -37,18 +35,18 @@
 }
 
 .brand-icon {
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   border-radius: 8px;
   flex-shrink: 0;
 }
 
 .brand-name {
-  font-size: 15px;
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
   color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -57,53 +55,75 @@
   text-align: left;
   background: none;
   border: none;
-  color: var(--accent);
+  color: var(--text-primary);
   font-size: 16px;
-  font-weight: 500;
+  font-weight: 600;
   padding: var(--space-2) 0;
 }
 
 .settings-gear {
   flex-shrink: 0;
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: var(--bg-elevated-2);
-  border: none;
-  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  color: var(--text-primary);
   font-size: 16px;
 }
 
+/* Floating dock: a detached pill. The active tab expands into an orange capsule with its label. */
 .bottom-nav {
   position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
+  right: var(--space-4);
+  bottom: calc(var(--space-3) + env(safe-area-inset-bottom));
+  left: var(--space-4);
   z-index: 100;
   display: flex;
-  justify-content: space-around;
-  padding: 2px var(--space-2) 0;
-  background: var(--bg-base);
-  backdrop-filter: blur(20px) saturate(180%);
-  border-top: 1px solid var(--hairline);
+  justify-content: space-between;
+  gap: 2px;
+  padding: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #0e1830 86%, transparent);
+  backdrop-filter: blur(18px) saturate(160%);
+  border: 1px solid var(--line-strong);
+  box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.75);
 }
 
 .bottom-nav-item {
-  flex: 1;
+  flex: 0 1 auto;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 1px;
-  padding: 6px 0 0;
+  justify-content: center;
+  gap: 6px;
+  min-width: 46px;
+  height: 46px;
+  padding: 0 13px;
+  border-radius: 999px;
   color: var(--text-tertiary);
-  font-size: 10px;
-  font-weight: 500;
-  transition: color 120ms ease-out;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  transition: background-color 260ms var(--ease), color 260ms var(--ease), padding 260ms var(--ease);
+}
+
+.bottom-nav-item span {
+  max-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  opacity: 0;
+  transition: max-width 320ms var(--ease), opacity 200ms var(--ease);
 }
 
 .bottom-nav-item--active {
-  color: var(--accent);
+  background: var(--accent-fill);
+  color: var(--on-accent);
+}
+
+.bottom-nav-item--active span {
+  max-width: 90px;
+  opacity: 1;
 }

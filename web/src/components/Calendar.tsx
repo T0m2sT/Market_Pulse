@@ -16,8 +16,8 @@ function toKey(y: number, m: number, d: number): string {
 const KIND_COLOR: Record<CalendarEvent["kind"], string> = {
   earnings: "var(--accent-dim)", // upcoming earnings
   "earnings-past": "var(--bg-elevated-2)", // already-reported earnings, muted
-  "dividend-ex": "rgba(79, 184, 122, 0.16)", // ex-dividend date, lighter (just a qualification cutoff)
-  "dividend-pay": "rgba(79, 184, 122, 0.45)", // payment date, darker (the cash actually arrives)
+  "dividend-ex": "color-mix(in srgb, var(--positive) 18%, transparent)", // ex-dividend date, lighter (just a qualification cutoff)
+  "dividend-pay": "color-mix(in srgb, var(--positive) 50%, transparent)", // payment date, darker (the cash actually arrives)
 };
 
 export function Calendar({

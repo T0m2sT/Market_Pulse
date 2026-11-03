@@ -13,8 +13,8 @@ export default defineConfig({
         name: 'Market Pulse',
         short_name: 'Market Pulse',
         description: 'News and earnings tracker for your portfolio',
-        theme_color: '#0b0d11',
-        background_color: '#0b0d11',
+        theme_color: '#070b18',
+        background_color: '#070b18',
         display: 'standalone',
         start_url: '/',
         icons: [

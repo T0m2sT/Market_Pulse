@@ -52,7 +52,7 @@ export function TickerAvatar({
           // Logo failed to load - swap the <img> for the initials fallback in place.
           const el = e.currentTarget;
           const fallback = document.createElement("div");
-          fallback.style.cssText = `width:${size}px;height:${size}px;min-width:${size}px;border-radius:50%;background:${avatarColor(ticker)};display:flex;align-items:center;justify-content:center;font-size:${size * 0.36}px;font-weight:700;color:var(--bg-base);letter-spacing:-0.02em`;
+          fallback.style.cssText = `width:${size}px;height:${size}px;min-width:${size}px;border-radius:50%;background:${avatarColor(ticker)};display:flex;align-items:center;justify-content:center;font-size:${size * 0.36}px;font-weight:700;color:var(--on-avatar);letter-spacing:-0.02em`;
           fallback.textContent = initials;
           el.replaceWith(fallback);
         }}
@@ -73,7 +73,7 @@ export function TickerAvatar({
         justifyContent: "center",
         fontSize: size * 0.36,
         fontWeight: 700,
-        color: "var(--bg-base)",
+        color: "var(--on-avatar)",
         letterSpacing: "-0.02em",
       }}
     >

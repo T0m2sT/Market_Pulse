@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import type { DividendsDoc } from "../api/types";
-import { Card, Freshness } from "../components/Card";
+import { Card, Freshness, Row } from "../components/Card";
+import { Hero } from "../components/Hero";
 import { TickerAvatar } from "../components/TickerAvatar";
 import { Calendar, type CalendarEvent } from "../components/Calendar";
 import { Modal } from "../components/Modal";
@@ -37,6 +38,14 @@ export default function Dividends() {
       .reduce((sum, d) => sum + d.amountEur, 0);
   }, [doc]);
 
+  const upcoming = useMemo(() => {
+    const todayKey = new Date().toISOString().slice(0, 10);
+    return (doc?.dividends ?? [])
+      .filter((x) => x.paymentDate >= todayKey)
+      .sort((a, z) => a.paymentDate.localeCompare(z.paymentDate))
+      .slice(0, 8);
+  }, [doc]);
+
   if (error) return <p style={{ color: "var(--negative)" }}>{error}</p>;
   if (!doc) return <p style={{ color: "var(--text-tertiary)" }}>Loading…</p>;
 
@@ -49,18 +58,41 @@ export default function Dividends() {
       <h1>Dividends</h1>
       <Freshness updatedAt={doc.updatedAt} />
 
-      <Card elevated>
-        <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: "var(--space-1)" }}>
-          Estimated total, next 90 days
-        </p>
-        <p className="num" style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.02em" }}>
-          {eur(next90Total)}
-        </p>
-      </Card>
+      <Hero label="Estimated total, next 90 days" value={next90Total} />
 
       <Card>
         <Calendar events={calendarEvents} onSelectDate={setSelectedDate} />
       </Card>
+
+      {upcoming.length > 0 && (
+        <>
+          <h2 className="display" style={{ fontSize: 28, marginTop: "var(--space-3)" }}>
+            Next payments
+          </h2>
+          <Card>
+            {upcoming.map((x, i) => (
+              <Row
+                key={`${x.ticker}:${x.paymentDate}`}
+                last={i === upcoming.length - 1}
+                leading={<TickerAvatar ticker={x.ticker} logo={x.logo} />}
+                label={x.name}
+                sublabel={
+                  <span className="num">
+                    Pays{" "}
+                    {new Date(x.paymentDate + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                    {x.yieldPct !== null && ` · ${x.yieldPct.toFixed(2)}% yield`}
+                  </span>
+                }
+                trailing={
+                  <span className="num" style={{ fontWeight: 700, fontSize: 15 }}>
+                    {eur(x.amountEur)}
+                  </span>
+                }
+              />
+            ))}
+          </Card>
+        </>
+      )}
 
       {selectedDate && touching.length > 0 && (
         <Modal
