@@ -81,7 +81,7 @@
 .bottom-nav {
   position: absolute;
   right: var(--space-4);
-  bottom: max(8px, calc(env(safe-area-inset-bottom) / 2)); /* just clear of the home-indicator line, which iOS always draws on top */
+  bottom: max(16px, calc(env(safe-area-inset-bottom) / 2 + 12px)); /* just clear of the home-indicator line, which iOS always draws on top */
   left: var(--space-4);
   z-index: 100;
   display: flex;
