@@ -122,6 +122,7 @@ export function FilterMenu<T extends string>({
             style={{ position: "fixed", inset: 0, zIndex: 10 }}
           />
           <div
+            data-menu-open
             style={{
               position: "absolute",
               top: "calc(100% + 4px)",

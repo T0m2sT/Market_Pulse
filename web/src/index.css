@@ -145,6 +145,12 @@ h1::after {
   .app-content > div > *:nth-child(n + 6) { animation-delay: 300ms; }
 }
 
+/* The entrance animation gives each block its own stacking layer; lift the one holding an open menu above its siblings. */
+.app-content > div > *:has([data-menu-open]) {
+  position: relative;
+  z-index: 20;
+}
+
 @keyframes rise {
   from {
     opacity: 0;
