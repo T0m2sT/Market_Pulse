@@ -51,10 +51,10 @@ export function Hero({
         position: "relative",
         padding: "var(--space-5)",
         borderRadius: "var(--radius-lg)",
-        background: "var(--hero-bg)",
+        background: compact ? "var(--card-bg)" : "var(--hero-bg)",
         color: "var(--hero-fg)",
         overflow: "hidden",
-        border: "1px solid var(--line-strong)",
+        border: compact ? "1px solid var(--hairline)" : "1px solid var(--line-strong)",
         boxShadow: "var(--shadow-card)",
       }}
     >
