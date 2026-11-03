@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
-import type { NewsDoc, EarningsDoc, DividendsDoc, HoldingsDoc } from "../api/types";
+import type { NewsDoc, EarningsDoc, DividendsDoc, HoldingsDoc, ReturnsDoc } from "../api/types";
 import { Card, Freshness } from "../components/Card";
 import { TickerAvatar } from "../components/TickerAvatar";
 import { Hero } from "../components/Hero";
@@ -36,6 +36,7 @@ export default function Today() {
   const [earnings, setEarnings] = useState<EarningsDoc | null>(null);
   const [dividends, setDividends] = useState<DividendsDoc | null>(null);
   const [holdings, setHoldings] = useState<HoldingsDoc | null>(null);
+  const [returns, setReturns] = useState<ReturnsDoc | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
@@ -45,23 +46,17 @@ export default function Today() {
       api.get<EarningsDoc>("/api/earnings"),
       api.get<DividendsDoc>("/api/dividends"),
       api.get<HoldingsDoc>("/api/holdings"),
+      api.get<ReturnsDoc>("/api/returns"),
     ])
-      .then(([n, e, d, h]) => {
+      .then(([n, e, d, h, r]) => {
         setNews(n);
         setEarnings(e);
         setDividends(d);
         setHoldings(h);
+        setReturns(r);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"));
   }, []);
-
-  const portfolio = useMemo(() => {
-    const ps = holdings?.positions ?? [];
-    if (ps.length === 0) return null;
-    const value = ps.reduce((s, p) => s + p.quantity * p.currentPrice, 0);
-    const cost = ps.reduce((s, p) => s + p.quantity * p.averagePrice, 0);
-    return { value, pnl: value - cost, percent: cost > 0 ? (value - cost) / cost : 0 };
-  }, [holdings]);
 
   const ribbon = useMemo(
     () =>
@@ -101,8 +96,8 @@ export default function Today() {
       <h1>Today</h1>
       <Freshness updatedAt={news.updatedAt} />
 
-      {portfolio && (
-        <Hero label="Portfolio value" value={portfolio.value} pnl={portfolio.pnl} percent={portfolio.percent} />
+      {returns && (
+        <Hero label="Portfolio value" value={returns.totalValue} pnl={returns.totalPnl} percent={returns.totalPnlPercent} />
       )}
 
       {ribbon.length > 0 && (
