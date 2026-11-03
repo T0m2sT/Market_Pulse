@@ -1,10 +1,10 @@
+/* Pinned to the real screen edges (incl. under the home indicator) so the dock can sit near the bottom. */
 .app-shell {
-  position: relative;
+  position: fixed;
+  inset: 0;
   z-index: 1;
   display: flex;
   flex-direction: column;
-  height: 100%;
-  min-height: 100%;
 }
 
 .app-content {
@@ -80,7 +80,7 @@
 .bottom-nav {
   position: absolute;
   right: var(--space-4);
-  bottom: calc(var(--space-3) + env(safe-area-inset-bottom));
+  bottom: calc(var(--space-2) + env(safe-area-inset-bottom) / 2);
   left: var(--space-4);
   z-index: 100;
   display: flex;
