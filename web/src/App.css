@@ -80,13 +80,13 @@
 .bottom-nav {
   position: absolute;
   right: var(--space-4);
-  bottom: calc(var(--space-2) + env(safe-area-inset-bottom) / 2);
+  bottom: calc(4px + env(safe-area-inset-bottom) / 4);
   left: var(--space-4);
   z-index: 100;
   display: flex;
   justify-content: space-between;
   gap: 2px;
-  padding: 6px;
+  padding: 5px;
   border-radius: 999px;
   background: color-mix(in srgb, #0e1830 86%, transparent);
   backdrop-filter: blur(18px) saturate(160%);
@@ -94,14 +94,15 @@
   box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.75);
 }
 
+/* Inactive tabs share all the free width, so each touch target is the whole slot, not just the icon. */
 .bottom-nav-item {
-  flex: 0 1 auto;
+  flex: 1 1 0;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   min-width: 46px;
-  height: 46px;
+  height: 54px;
   padding: 0 13px;
   border-radius: 999px;
   color: var(--text-tertiary);
@@ -120,6 +121,7 @@
 }
 
 .bottom-nav-item--active {
+  flex: 0 0 auto;
   background: var(--accent-fill);
   color: var(--on-accent);
 }
