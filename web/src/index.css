@@ -68,21 +68,15 @@
   box-sizing: border-box;
 }
 
-html,
-body,
-#root {
-  height: 100%;
-  overflow: hidden;
+html {
+  overscroll-behavior: none;
+  background: var(--bg-base);
 }
 
-/* iOS Safari (incl. standalone PWA) resizes the visual viewport depending on whether the
-   document itself can scroll, which shifts fixed-position elements (like the bottom nav)
-   inconsistently between pages of different content heights. Locking the outer document so it
-   never scrolls - all scrolling happens inside .app-content instead - keeps the viewport height
-   identical on every page, so the nav's fixed position never moves. */
+/* The app shell is position:fixed, so the document itself never scrolls. Keep html/body/#root free of
+   fixed heights and overflow clipping: on iOS standalone, that clipped the page (and the dock) at the
+   short innerHeight and left a dead band under the app. */
 body {
-  position: fixed;
-  inset: 0 0 calc(env(safe-area-inset-bottom) * -1);
   margin: 0;
   background: var(--bg-base);
   color: var(--text-primary);

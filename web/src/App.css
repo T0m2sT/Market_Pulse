@@ -80,7 +80,7 @@
 .bottom-nav {
   position: absolute;
   right: var(--space-4);
-  bottom: 12px;
+  bottom: max(14px, calc(env(safe-area-inset-bottom) / 2 + 4px));
   left: var(--space-4);
   z-index: 100;
   display: flex;
