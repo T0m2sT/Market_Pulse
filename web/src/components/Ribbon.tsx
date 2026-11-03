@@ -19,22 +19,13 @@ export function Ribbon({ children }: { children: ReactNode }) {
     let pos = el.scrollLeft;
     let lastWritten = pos;
     let lastInteraction = -Infinity;
-    let pointerDown = false;
     let last = performance.now();
     let frame = 0;
 
     const touch = () => {
       lastInteraction = performance.now();
     };
-    const onDown = () => {
-      pointerDown = true;
-      touch();
-    };
-    const onUp = () => {
-      pointerDown = false;
-      touch();
-    };
-    // A scroll we did not write (finger, wheel, momentum) counts as the user and resets the timer.
+    // Only a scroll we did not write (finger drag, wheel, momentum) pauses the drift; a plain tap does not.
     const onScroll = () => {
       if (Math.abs(el.scrollLeft - lastWritten) > 1.5) {
         pos = el.scrollLeft;
@@ -47,7 +38,7 @@ export function Ribbon({ children }: { children: ReactNode }) {
       const dt = Math.min(64, now - last) / 1000;
       last = now;
       const half = el.scrollWidth / 2;
-      const idle = !pointerDown && now - lastInteraction > RESUME_AFTER_MS;
+      const idle = now - lastInteraction > RESUME_AFTER_MS;
       if (idle) pos += SPEED_PX_PER_S * dt;
       if (half > 0) {
         if (pos >= half) pos -= half;
@@ -60,19 +51,13 @@ export function Ribbon({ children }: { children: ReactNode }) {
       frame = requestAnimationFrame(tick);
     };
 
-    el.addEventListener("pointerdown", onDown);
     el.addEventListener("wheel", touch, { passive: true });
     el.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("pointerup", onUp);
-    window.addEventListener("pointercancel", onUp);
     frame = requestAnimationFrame(tick);
     return () => {
       cancelAnimationFrame(frame);
-      el.removeEventListener("pointerdown", onDown);
       el.removeEventListener("wheel", touch);
       el.removeEventListener("scroll", onScroll);
-      window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("pointercancel", onUp);
     };
   }, []);
 
