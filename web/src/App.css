@@ -80,7 +80,7 @@
 .bottom-nav {
   position: absolute;
   right: var(--space-4);
-  bottom: calc(4px + env(safe-area-inset-bottom) / 4);
+  bottom: 6px; /* deliberately inside the home-indicator safe area, like a native tab bar */
   left: var(--space-4);
   z-index: 100;
   display: flex;
